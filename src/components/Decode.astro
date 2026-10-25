@@ -1,0 +1,12 @@
+---
+/**
+ * The hero tagline. The "decode" animation itself is applied site-wide by
+ * src/scripts/scramble.ts (it targets .decode among other elements).
+ */
+interface Props {
+    text: string;
+}
+const { text } = Astro.props;
+---
+
+<p class="decode">{text}</p>

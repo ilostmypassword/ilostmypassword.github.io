@@ -1,0 +1,75 @@
+---
+import Base from "../layouts/Base.astro";
+import Decode from "../components/Decode.astro";
+import Scene3D from "../components/Scene3D.astro";
+import PostList from "../components/PostList.astro";
+import { HALL_OF_FAME, SITE } from "../consts";
+import { getPosts, url } from "../utils/posts";
+
+const all = await getPosts();
+const latest = all.slice(0, 6);
+---
+
+<Base>
+    <section class="hero wrap" aria-labelledby="name">
+        <Scene3D />
+        <h1 class="hero-name" id="name">
+            {SITE.title}
+        </h1>
+        <Decode text={SITE.tagline} />
+        <p class="hero-bio">
+            This is where I write about a range of topics, including security
+            research, CTFs, politics and geopolitics or simply whatever random
+            thoughts happen to cross my mind. The views expressed here are my
+            own and do not reflect those of my employer.
+        </p>
+    </section>
+
+    {HALL_OF_FAME.length > 0 && (
+        <section class="wrap hof-section" aria-labelledby="hof">
+            <div class="hof-wrap">
+                <h2 class="section-title centered" id="hof">
+                    Bug Bounty Hall of Fame
+                </h2>
+                <ul class="hof">
+                    {HALL_OF_FAME.map((c) => (
+                        <li class="hof-item" title={c.name}>
+                            <img
+                                src={c.logo}
+                                alt={c.name}
+                                loading="lazy"
+                                decoding="async"
+                                referrerpolicy="no-referrer"
+                            />
+                        </li>
+                    ))}
+                </ul>
+                <p class="hof-note">
+                    Recognized for responsibly reported vulnerabilities through
+                    YesWeHack.
+                </p>
+            </div>
+        </section>
+    )}
+
+    <section class="wrap" aria-labelledby="latest">
+        <h2 class="section-title centered" id="latest">
+            Latest articles
+        </h2>
+        {latest.length > 0 ? (
+            <PostList posts={latest} />
+        ) : (
+            <p class="empty">
+                Nothing published yet. Add a Markdown file to src/content/posts
+                to publish your first article.
+            </p>
+        )}
+        {all.length > latest.length && (
+            <div class="split">
+                <p class="more main">
+                    <a href={url("/posts/")}>See all {all.length} articles</a>
+                </p>
+            </div>
+        )}
+    </section>
+</Base>

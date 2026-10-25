@@ -1,0 +1,723 @@
+---
+/**
+ * EXPERIMENTAL: an abstract 3D scene behind the home hero. No dependency:
+ * everything is projected by hand with a tiny perspective camera and drawn
+ * on a 2D canvas.
+ *
+ *  - A point/line "membrane" that continuously morphs between surfaces
+ *    (sphere, torus, Mobius strip, wave sheet, twisted hyperboloid).
+ *  - A scan beam that sweeps through it and lights up what it crosses.
+ *  - Tilted orbital rings, each with a comet running along it.
+ *  - A large faint counter-rotating cage and a few drifting solids.
+ *  - Floating dust with parallax. The pointer tilts the scene and pushes
+ *    the membrane away like a ripple.
+ *
+ * Pauses off-screen, renders one still frame with reduced motion, and
+ * re-initialises after Astro page transitions.
+ *
+ * Audio reactive: the music player publishes smoothed bass / mid / high
+ * levels on window.__audio. The membrane breathes with the bass, shivers
+ * with mids and highs, the scan beam and rings speed up with the level,
+ * and every detected beat sends a shockwave ripple through the scene.
+ * Without music, all levels are 0 and the scene looks exactly as before.
+ * To remove it, delete <Scene3D /> from src/pages/index.astro.
+ */
+---
+
+<canvas class="scene" data-scene aria-hidden="true"></canvas>
+
+<script>
+    type V3 = [number, number, number];
+    type Edge = [number, number];
+    interface Mesh {
+        v: V3[];
+        e: Edge[];
+    }
+
+    // Palette (PURPLE = main accent, LILAC = highlight, DIM = faint accent). Values are R,G,B.
+    const PURPLE = "106,47,166";
+    const LILAC = "168,112,236";
+    const DIM = "62,32,104";
+    const INK = "217,225,228";
+    const TAU = Math.PI * 2;
+
+    const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
+    const ease = (x: number) =>
+        x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+
+    // ---------- Solids (normalised to a unit radius) ----------
+    const normalise = (v: V3[]): V3[] => {
+        const r = Math.max(...v.map(([x, y, z]) => Math.hypot(x, y, z)));
+        return v.map(([x, y, z]) => [x / r, y / r, z / r] as V3);
+    };
+
+    const byDistance = (v: V3[]): Edge[] => {
+        const d = (a: V3, b: V3) =>
+            Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+        let min = Infinity;
+        for (let i = 0; i < v.length; i++)
+            for (let j = i + 1; j < v.length; j++)
+                min = Math.min(min, d(v[i], v[j]));
+        const e: Edge[] = [];
+        for (let i = 0; i < v.length; i++)
+            for (let j = i + 1; j < v.length; j++)
+                if (d(v[i], v[j]) < min * 1.01) e.push([i, j]);
+        return e;
+    };
+
+    const solid = (raw: V3[]): Mesh => {
+        const v = normalise(raw);
+        return { v, e: byDistance(v) };
+    };
+
+    const phi = (1 + Math.sqrt(5)) / 2;
+    const icosahedron = (() => {
+        const v: V3[] = [];
+        for (const a of [-1, 1])
+            for (const b of [-phi, phi])
+                v.push([0, a, b], [a, b, 0], [b, 0, a]);
+        return solid(v);
+    })();
+    const octahedron = solid([
+        [1, 0, 0],
+        [-1, 0, 0],
+        [0, 1, 0],
+        [0, -1, 0],
+        [0, 0, 1],
+        [0, 0, -1],
+    ]);
+    const cube = (() => {
+        const v: V3[] = [];
+        for (const x of [-1, 1])
+            for (const y of [-1, 1]) for (const z of [-1, 1]) v.push([x, y, z]);
+        return solid(v);
+    })();
+    const hexPrism = (() => {
+        const v: V3[] = [];
+        for (const h of [-0.55, 0.55])
+            for (let k = 0; k < 6; k++)
+                v.push([
+                    Math.cos((k * Math.PI) / 3),
+                    h,
+                    Math.sin((k * Math.PI) / 3),
+                ]);
+        const e: Edge[] = [];
+        for (let l = 0; l < 2; l++)
+            for (let k = 0; k < 6; k++)
+                e.push([l * 6 + k, l * 6 + ((k + 1) % 6)]);
+        for (let k = 0; k < 6; k++) e.push([k, 6 + k]);
+        return { v: normalise(v), e } as Mesh;
+    })();
+
+    // ---------- Morphing membrane ----------
+    const GU = 28;
+    const GV = 16;
+    const N = (GU + 1) * (GV + 1);
+
+    type Surface = (u: number, v: number) => V3;
+    const surfaces: Surface[] = [
+        // sphere
+        (u, v) => {
+            const a = u * TAU;
+            const b = v * Math.PI;
+            return [
+                Math.sin(b) * Math.cos(a),
+                Math.cos(b),
+                Math.sin(b) * Math.sin(a),
+            ];
+        },
+        // torus
+        (u, v) => {
+            const a = u * TAU;
+            const b = v * TAU;
+            const k = 1 + 0.38 * Math.cos(b);
+            return [
+                (k * Math.cos(a)) / 1.38,
+                (0.38 * Math.sin(b)) / 1.38,
+                (k * Math.sin(a)) / 1.38,
+            ];
+        },
+        // Mobius strip
+        (u, v) => {
+            const a = u * TAU;
+            const w = (v - 0.5) * 0.95;
+            const k = 1 + w * Math.cos(a / 2);
+            return [
+                (k * Math.cos(a)) / 1.45,
+                (w * Math.sin(a / 2)) / 1.45,
+                (k * Math.sin(a)) / 1.45,
+            ];
+        },
+        // wave sheet
+        (u, v) => {
+            const x = (u - 0.5) * 2;
+            const z = (v - 0.5) * 2;
+            return [
+                x * 0.95,
+                0.42 * Math.sin(x * 3.4) * Math.cos(z * 3.4),
+                z * 0.95,
+            ];
+        },
+        // twisted hyperboloid
+        (u, v) => {
+            const y = (v - 0.5) * 2;
+            const a = u * TAU + y * 1.5;
+            const r = Math.sqrt(0.16 + 0.8 * y * y) * 0.85;
+            return [r * Math.cos(a), y * 0.9, r * Math.sin(a)];
+        },
+    ];
+
+    const points: Float32Array[] = surfaces.map((s) => {
+        const out = new Float32Array(N * 3);
+        for (let iu = 0; iu <= GU; iu++)
+            for (let iv = 0; iv <= GV; iv++) {
+                const [x, y, z] = s(iu / GU, iv / GV);
+                const i = (iu * (GV + 1) + iv) * 3;
+                out[i] = x;
+                out[i + 1] = y;
+                out[i + 2] = z;
+            }
+        return out;
+    });
+
+    const edgeList: number[] = [];
+    for (let iu = 0; iu <= GU; iu++)
+        for (let iv = 0; iv <= GV; iv++) {
+            const i = iu * (GV + 1) + iv;
+            if (iu < GU) edgeList.push(i, (iu + 1) * (GV + 1) + iv);
+            if (iv < GV) edgeList.push(i, i + 1);
+        }
+    const EDGES = Int32Array.from(edgeList);
+
+    const HOLD = 5;
+    const MORPH = 2.6;
+    const CYCLE = HOLD + MORPH;
+
+    // ---------- Orbital rings ----------
+    const rings = [
+        { r: 1.3, tx: 1.15, tz: 0.2, sp: 0.55, tilt: 0.12, phase: 0.0 },
+        { r: 1.55, tx: 0.3, tz: 1.0, sp: -0.38, tilt: 0.09, phase: 2.1 },
+        { r: 1.8, tx: 0.8, tz: -0.6, sp: 0.25, tilt: 0.07, phase: 4.2 },
+    ];
+    const RING_SEG = 72;
+    const TAIL = 16;
+
+    // ---------- Satellites (fractions of the canvas) ----------
+    const CLOUD = { fx: 0.72, fy: 0.46 };
+    const satellites = [
+        {
+            mesh: icosahedron,
+            fx: CLOUD.fx,
+            fy: CLOUD.fy,
+            size: 0.66,
+            layer: 0.4,
+            col: DIM,
+            alpha: 0.2,
+            sx: -0.05,
+            sy: -0.08,
+            p: 0.5,
+            dots: false,
+        },
+        {
+            mesh: octahedron,
+            fx: 0.55,
+            fy: 0.12,
+            size: 0.07,
+            layer: 2.0,
+            col: INK,
+            alpha: 0.35,
+            sx: 0.4,
+            sy: 0.25,
+            p: 4.4,
+            dots: true,
+        },
+        {
+            mesh: cube,
+            fx: 0.95,
+            fy: 0.14,
+            size: 0.055,
+            layer: 0.8,
+            col: PURPLE,
+            alpha: 0.6,
+            sx: 0.28,
+            sy: 0.18,
+            p: 5.6,
+            dots: false,
+        },
+        {
+            mesh: hexPrism,
+            fx: 0.52,
+            fy: 0.86,
+            size: 0.1,
+            layer: 0.6,
+            col: PURPLE,
+            alpha: 0.6,
+            sx: 0.22,
+            sy: 0.35,
+            p: 3.1,
+            dots: false,
+        },
+        {
+            mesh: icosahedron,
+            fx: 0.94,
+            fy: 0.86,
+            size: 0.06,
+            layer: 1.4,
+            col: INK,
+            alpha: 0.35,
+            sx: 0.3,
+            sy: 0.2,
+            p: 1.7,
+            dots: true,
+        },
+    ];
+
+    // ---------- Dust (deterministic so every load looks the same) ----------
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+    const dust = Array.from({ length: 64 }, () => ({
+        x: rnd(),
+        y: rnd(),
+        vx: 0.004 + rnd() * 0.01,
+        vy: (rnd() - 0.5) * 0.006,
+        layer: 0.3 + rnd() * 1.7,
+        a: 0.15 + rnd() * 0.4,
+        tw: rnd() * TAU,
+        col: rnd() < 0.7 ? PURPLE : INK,
+    }));
+
+    // Scratch buffers
+    const px = new Float32Array(N);
+    const py = new Float32Array(N);
+    const pz = new Float32Array(N);
+    const wy = new Float32Array(N);
+    const gl = new Float32Array(N);
+    const mx_ = new Float32Array(32);
+    const my_ = new Float32Array(32);
+    const mz_ = new Float32Array(32);
+
+    // Shared pointer state
+    interface AudioLevels {
+        bass: number;
+        mid: number;
+        high: number;
+        level: number;
+        beats: number;
+    }
+    const SILENT: AudioLevels = {
+        bass: 0,
+        mid: 0,
+        high: 0,
+        level: 0,
+        beats: 0,
+    };
+    const readAudio = (): AudioLevels =>
+        (window as unknown as { __audio?: AudioLevels }).__audio ?? SILENT;
+
+    let targetX = 0;
+    let targetY = 0;
+    let clientX = -9999;
+    let clientY = -9999;
+    let stop: (() => void) | null = null;
+
+    window.addEventListener("pointermove", (ev) => {
+        clientX = ev.clientX;
+        clientY = ev.clientY;
+        targetX = (ev.clientX / window.innerWidth) * 2 - 1;
+        targetY = (ev.clientY / window.innerHeight) * 2 - 1;
+    });
+    document.addEventListener("pointerleave", () => {
+        clientX = clientY = -9999;
+    });
+
+    function start(canvas: HTMLCanvasElement) {
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return () => {};
+        const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        let w = 0;
+        let h = 0;
+        let visible = true;
+        let raf = 0;
+        let mx = 0;
+        let my = 0;
+
+        // Audio reaction state
+        let au: AudioLevels = SILENT;
+        let spin = 0;
+        let ringSpin = 0;
+        let lastBeats = readAudio().beats;
+        let lastNow = 0;
+        let kick = 0;
+        // Global time scale: lower = slower animation.
+        const SPEED = 0.65;
+        const waves: { t: number; s: number }[] = [];
+
+        const resize = () => {
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            w = canvas.clientWidth;
+            h = canvas.clientHeight;
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        };
+
+        const line = (
+            x1: number,
+            y1: number,
+            x2: number,
+            y2: number,
+            col: string,
+            a: number,
+        ) => {
+            ctx.strokeStyle = `rgba(${col},${a.toFixed(3)})`;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        };
+
+        // Wireframe solid with depth-shaded edges.
+        const drawMesh = (
+            m: Mesh,
+            ax: number,
+            ay: number,
+            R: number,
+            ry: number,
+            rx: number,
+            col: string,
+            alpha: number,
+            dots: boolean,
+            fade: number,
+        ) => {
+            const cy = Math.cos(ry);
+            const sy = Math.sin(ry);
+            const cx = Math.cos(rx);
+            const sx = Math.sin(rx);
+            const n = m.v.length;
+            for (let i = 0; i < n; i++) {
+                const [x, y, z] = m.v[i];
+                const x1 = x * cy + z * sy;
+                const z1 = -x * sy + z * cy;
+                const y2 = y * cx - z1 * sx;
+                const z2 = y * sx + z1 * cx;
+                const k = 1 / (1 + z2 * 0.25);
+                mx_[i] = ax + x1 * R * k;
+                my_[i] = ay + y2 * R * k;
+                mz_[i] = z2;
+            }
+            ctx.lineWidth = 1;
+            for (const [a, b] of m.e) {
+                const depth = clamp01(0.5 - (mz_[a] + mz_[b]) * 0.2);
+                line(
+                    mx_[a],
+                    my_[a],
+                    mx_[b],
+                    my_[b],
+                    col,
+                    alpha * fade * (0.25 + 0.75 * depth),
+                );
+            }
+            if (dots) {
+                for (let i = 0; i < n; i++) {
+                    const depth = clamp01(0.5 - mz_[i] * 0.5);
+                    ctx.fillStyle = `rgba(${col},${Math.min(1, alpha * fade * (0.5 + depth) + 0.15).toFixed(3)})`;
+                    ctx.fillRect(mx_[i] - 1.5, my_[i] - 1.5, 3, 3);
+                }
+            }
+        };
+
+        const draw = (t: number) => {
+            ctx.clearRect(0, 0, w, h);
+            const u = Math.min(w, h);
+            const fade = w < 700 ? 0.55 : 1;
+            const rect = canvas.getBoundingClientRect();
+            const ptrX = clientX - rect.left;
+            const ptrY = clientY - rect.top;
+
+            // Dust
+            for (const d of dust) {
+                const x = (((d.x + t * d.vx) % 1) + 1) % 1;
+                const y = (((d.y + t * d.vy) % 1) + 1) % 1;
+                const tw = 0.6 + 0.4 * Math.sin(t * 1.3 + d.tw);
+                ctx.fillStyle = `rgba(${d.col},${Math.min(1, d.a * tw * fade * (1 + au.high * 1.6)).toFixed(3)})`;
+                ctx.fillRect(
+                    x * w + mx * d.layer * 10,
+                    y * h + my * d.layer * 7,
+                    1.5,
+                    1.5,
+                );
+            }
+
+            // Cage + satellites
+            for (const s of satellites) {
+                const ax = s.fx * w + mx * s.layer * 22;
+                const ay =
+                    s.fy * h + Math.sin(t * 0.6 + s.p) * 6 + my * s.layer * 14;
+                drawMesh(
+                    s.mesh,
+                    ax,
+                    ay,
+                    u * s.size * (1 + au.bass * 0.1),
+                    s.p + t * s.sy + mx * 0.35 + spin * 0.25,
+                    s.p * 0.5 + t * s.sx + my * 0.25,
+                    s.col,
+                    s.alpha * (1 + au.level * 1.1),
+                    s.dots,
+                    fade,
+                );
+            }
+
+            // Membrane
+            const R = u * 0.27 * (1 + au.bass * 0.15 + kick * 0.12);
+            const ax = CLOUD.fx * w + mx * 14;
+            const ay = CLOUD.fy * h + Math.sin(t * 0.6) * 6 + my * 9;
+            const idx = Math.floor(t / CYCLE);
+            const local = t - idx * CYCLE;
+            const A = points[idx % points.length];
+            const B = points[(idx + 1) % points.length];
+            const m = local < HOLD ? 0 : ease((local - HOLD) / MORPH);
+
+            const ry = t * 0.25 + mx * 0.5 + spin * 0.5;
+            const rx = 0.5 + Math.sin(t * 0.2) * 0.2 + my * 0.3;
+            const cy = Math.cos(ry);
+            const sy = Math.sin(ry);
+            const cx = Math.cos(rx);
+            const sx = Math.sin(rx);
+            const scanY = Math.sin(t * 0.6 + spin * 1.5) * 1.05;
+            const REP = 110;
+            const shiver = au.level > 0.01;
+
+            for (let i = 0; i < N; i++) {
+                const j = i * 3;
+                const bump = shiver
+                    ? 1 +
+                      au.bass * 0.15 +
+                      kick * 0.07 +
+                      au.mid * 0.05 * Math.sin(i * 0.9 + t * 5) +
+                      au.high * 0.035 * Math.sin(i * 2.3 + t * 9)
+                    : 1;
+                const x = (A[j] + (B[j] - A[j]) * m) * bump;
+                const y = (A[j + 1] + (B[j + 1] - A[j + 1]) * m) * bump;
+                const z = (A[j + 2] + (B[j + 2] - A[j + 2]) * m) * bump;
+                const x1 = x * cy + z * sy;
+                const z1 = -x * sy + z * cy;
+                const y2 = y * cx - z1 * sx;
+                const z2 = y * sx + z1 * cx;
+                const k = 1 / (1 + z2 * 0.25);
+                let X = ax + x1 * R * k;
+                let Y = ay + y2 * R * k;
+                const dx = X - ptrX;
+                const dy = Y - ptrY;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < REP * REP) {
+                    const d = Math.sqrt(d2) || 1;
+                    const f = 1 - d / REP;
+                    const push = f * f * 30;
+                    X += (dx / d) * push;
+                    Y += (dy / d) * push;
+                }
+                px[i] = X;
+                py[i] = Y;
+                pz[i] = z2;
+                wy[i] = y2;
+                const g = (y2 - scanY) / 0.13;
+                gl[i] = Math.exp(-g * g);
+            }
+
+            // Edges, bucketed by depth (4 shades)
+            ctx.lineWidth = 1;
+            for (let kb = 0; kb < 4; kb++) {
+                ctx.strokeStyle = `rgba(${PURPLE},${((0.07 + 0.09 * kb) * fade * (1 + au.level * 0.9 + kick * 0.8)).toFixed(3)})`;
+                ctx.beginPath();
+                for (let e = 0; e < EDGES.length; e += 2) {
+                    const a = EDGES[e];
+                    const b = EDGES[e + 1];
+                    const tt = 0.5 - (pz[a] + pz[b]) * 0.2;
+                    const bk =
+                        tt <= 0 ? 0 : tt >= 1 ? 3 : Math.min(3, (tt * 4) | 0);
+                    if (bk !== kb) continue;
+                    ctx.moveTo(px[a], py[a]);
+                    ctx.lineTo(px[b], py[b]);
+                }
+                ctx.stroke();
+            }
+            // Edges lit by the scan beam
+            for (let e = 0; e < EDGES.length; e += 2) {
+                const a = EDGES[e];
+                const b = EDGES[e + 1];
+                const g = (gl[a] + gl[b]) * 0.5;
+                if (g > 0.15)
+                    line(px[a], py[a], px[b], py[b], LILAC, g * 0.65 * fade);
+            }
+
+            // Points
+            for (let i = 0; i < N; i++) {
+                const dT = clamp01(0.5 - pz[i] * 0.4);
+                const g = gl[i];
+                const size = 0.9 + dT * 1.1 + g * 1.8 + au.bass * 0.9 * dT;
+                const a = Math.min(
+                    1,
+                    (0.2 + 0.35 * dT) * fade + g * 0.55 + au.level * 0.3 * dT,
+                );
+                ctx.fillStyle = `rgba(${g > 0.25 ? LILAC : PURPLE},${a.toFixed(3)})`;
+                ctx.fillRect(px[i] - size / 2, py[i] - size / 2, size, size);
+            }
+
+            // Rings with comets
+            for (const r of rings) {
+                const tx = r.tx + t * r.tilt;
+                const tz = r.tz + Math.sin(t * 0.2 + r.phase) * 0.3;
+                const ctx_ = Math.cos(tx);
+                const stx = Math.sin(tx);
+                const ctz = Math.cos(tz);
+                const stz = Math.sin(tz);
+                const ring = (a: number): V3 => {
+                    const x = Math.cos(a) * r.r;
+                    const z = Math.sin(a) * r.r;
+                    const y1 = -z * stx;
+                    const z1 = z * ctx_;
+                    const x2 = x * ctz - y1 * stz;
+                    const y2 = x * stz + y1 * ctz;
+                    const xr = x2 * cy + z1 * sy;
+                    const zr = -x2 * sy + z1 * cy;
+                    const yr = y2 * cx - zr * sx;
+                    const zz = y2 * sx + zr * cx;
+                    const k = 1 / (1 + zz * 0.25);
+                    return [ax + xr * R * k, ay + yr * R * k, zz];
+                };
+
+                let prev = ring(0);
+                for (let s = 1; s <= RING_SEG; s++) {
+                    const cur = ring((s / RING_SEG) * TAU);
+                    const near = clamp01(0.5 - (prev[2] + cur[2]) * 0.25);
+                    line(
+                        prev[0],
+                        prev[1],
+                        cur[0],
+                        cur[1],
+                        DIM,
+                        (0.1 + 0.3 * near) * fade * (1 + au.mid * 1.2),
+                    );
+                    prev = cur;
+                }
+
+                const dir = r.sp > 0 ? 1 : -1;
+                const head = t * r.sp * 1.6 + r.phase + ringSpin * dir;
+                let p0 = ring(head);
+                for (let j = 1; j <= TAIL; j++) {
+                    const p1 = ring(head - dir * j * 0.07);
+                    line(
+                        p0[0],
+                        p0[1],
+                        p1[0],
+                        p1[1],
+                        LILAC,
+                        (1 - j / TAIL) * (0.7 + au.level * 0.3) * fade,
+                    );
+                    p0 = p1;
+                }
+                const hp = ring(head);
+                ctx.fillStyle = `rgba(${LILAC},${(0.95 * fade).toFixed(3)})`;
+                const cs = 3 + au.high * 3;
+                ctx.fillRect(hp[0] - cs / 2, hp[1] - cs / 2, cs, cs);
+            }
+
+            // Bass flash: a soft glow that punches on every kick.
+            const flash = Math.min(1, au.bass * au.bass * 0.5 + kick * 0.55);
+            if (flash > 0.02) {
+                const gr = ctx.createRadialGradient(ax, ay, 0, ax, ay, R * 1.7);
+                gr.addColorStop(
+                    0,
+                    `rgba(${PURPLE},${(flash * 0.4 * fade).toFixed(3)})`,
+                );
+                gr.addColorStop(1, `rgba(${PURPLE},0)`);
+                ctx.fillStyle = gr;
+                ctx.fillRect(ax - R * 1.7, ay - R * 1.7, R * 3.4, R * 3.4);
+            }
+
+            // Beat shockwaves: flattened ripples expanding from the membrane.
+            // Each beat launches a bright front and a fainter echo behind it.
+            const LIFE = 1.5;
+            for (let wv = waves.length - 1; wv >= 0; wv--) {
+                const w0 = waves[wv];
+                const age = t - w0.t;
+                if (age > LIFE + 0.3 || age < 0) {
+                    waves.splice(wv, 1);
+                    continue;
+                }
+                for (let echo = 0; echo < 2; echo++) {
+                    const k = (age - echo * 0.22) / LIFE;
+                    if (k < 0 || k > 1) continue;
+                    const rad = R * (0.65 + k * 3.1);
+                    const fall = (1 - k) * (1 - k);
+                    const a = Math.min(
+                        1,
+                        fall * w0.s * (echo ? 0.5 : 1) * fade,
+                    );
+                    ctx.strokeStyle = `rgba(${LILAC},${a.toFixed(3)})`;
+                    ctx.lineWidth = (echo ? 1.3 : 3.2) * (0.4 + fall * 0.9);
+                    ctx.beginPath();
+                    ctx.ellipse(ax, ay, rad, rad * 0.4, -0.35, 0, TAU);
+                    ctx.stroke();
+                }
+            }
+            ctx.lineWidth = 1;
+        };
+
+        const frame = (now: number) => {
+            const dt = Math.min(0.05, (now - lastNow) / 1000 || 0.016) * SPEED;
+            lastNow = now;
+            mx += (targetX - mx) * 0.06;
+            my += (targetY - my) * 0.06;
+            au = readAudio();
+            spin += dt * (au.level * 0.55 + au.bass * 0.35);
+            ringSpin += dt * au.mid * 1.1;
+            kick *= Math.exp((-dt * 4.5) / SPEED);
+            if (au.beats !== lastBeats) {
+                lastBeats = au.beats;
+                kick = Math.max(kick, Math.min(1.3, 0.6 + au.bass * 0.9));
+                waves.push({
+                    t: (now / 1000) * SPEED,
+                    s: 0.85 + au.bass * 0.9,
+                });
+                if (waves.length > 5) waves.shift();
+            }
+            if (visible) draw((now / 1000) * SPEED);
+            raf = requestAnimationFrame(frame);
+        };
+
+        resize();
+        const ro = new ResizeObserver(() => {
+            resize();
+            if (reduce) draw(0);
+        });
+        ro.observe(canvas);
+        const io = new IntersectionObserver(
+            ([entry]) => (visible = entry.isIntersecting),
+        );
+        io.observe(canvas);
+
+        if (reduce) draw(0);
+        else raf = requestAnimationFrame(frame);
+
+        return () => {
+            cancelAnimationFrame(raf);
+            ro.disconnect();
+            io.disconnect();
+        };
+    }
+
+    document.addEventListener("astro:page-load", () => {
+        stop?.();
+        stop = null;
+        const canvas =
+            document.querySelector<HTMLCanvasElement>("canvas[data-scene]");
+        if (canvas) stop = start(canvas);
+    });
+
+    document.addEventListener("astro:before-swap", () => {
+        stop?.();
+        stop = null;
+    });
+</script>

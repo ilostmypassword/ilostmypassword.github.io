@@ -1,0 +1,204 @@
+---
+import Base from "../layouts/Base.astro";
+import { HALL_OF_FAME, PGP, SITE } from "../consts";
+import { url } from "../utils/posts";
+
+const facts = [
+    { k: "Role", v: "Cyber Defense Engineer" },
+    { k: "After hours", v: "Offensive Security Researcher" },
+    { k: "Based in", v: SITE.location },
+    { k: "Also known as", v: "veronique92" },
+];
+const stack = [
+    "Containerized decoys",
+    "Rule-based threat scoring",
+    "Real-time dashboard",
+    "STIX 2.1 export",
+    "Built-in AI analyst",
+];
+---
+
+<Base
+    title="About"
+    description="Cyber defense engineer, bug hunter and CTF player based in France."
+>
+    <header class="page-head fancy wrap">
+        <p class="eyebrow">about</p>
+        <h1 class="big-title" data-decode>
+            About
+        </h1>
+        <br />
+        <p class="lede term" aria-label="whoami">
+            <span class="term-user">h3ik0@blog</span>
+            <span class="term-sep">:</span>
+            <span class="term-path">~</span>
+            <span class="term-sep term-dollar">$</span>
+            <span class="term-cmd">whoami</span>
+            <span class="term-cursor" aria-hidden="true"></span>
+        </p>
+    </header>
+
+    <div class="wrap">
+        <dl class="facts">
+            {facts.map((f) => (
+                <div class="fact">
+                    <dt>{f.k}</dt>
+                    <dd>{f.v}</dd>
+                </div>
+            ))}
+        </dl>
+
+        <section class="about-sec split" aria-labelledby="two-sides">
+            <div class="gutter sec-tag" aria-hidden="true">
+                <span>01</span>
+            </div>
+            <div class="main prose">
+                <h2 id="two-sides">Two sides</h2>
+                <p>
+                    I work on the defensive side : Detection, Threat Hunting,
+                    Tooling, and making attackers easier to spot. Outside of
+                    work I do the opposite, looking for vulnerabilities through
+                    bug bounty programs and playing CTFs competitions.
+                </p>
+            </div>
+        </section>
+
+        <section class="about-sec split" aria-labelledby="projects">
+            <div class="gutter sec-tag" aria-hidden="true">
+                <span>02</span>
+            </div>
+            <div class="main prose">
+                <h2 id="projects">Projects</h2>
+                <a class="card" href={SITE.links.melissae}>
+                    <span class="card-top">
+                        <strong>Melissae Honeypot Framework</strong>
+                        <span class="card-go" aria-hidden="true">
+                            ↗
+                        </span>
+                    </span>
+                    <span class="card-text">
+                        A distributed honeypot framework with containerized
+                        decoys, rule-based threat scoring, a real-time
+                        dashboard, STIX 2.1 export and a built-in AI analyst.
+                    </span>
+                    <span class="chips">
+                        {stack.map((s) => (
+                            <span class="chip">{s}</span>
+                        ))}
+                    </span>
+                </a>
+                <p class="card-aside">
+                    Documentation :{" "}
+                    <a href={SITE.links.melissaeDocs}>
+                        melissae-documentation.readthedocs.io
+                    </a>
+                    .
+                </p>
+            </div>
+        </section>
+
+        <section class="about-sec split" aria-labelledby="bug-bounty">
+            <div class="gutter sec-tag" aria-hidden="true">
+                <span>03</span>
+            </div>
+            <div class="main prose">
+                <h2 id="bug-bounty">Bug bounty</h2>
+                <p>
+                    I report vulnerabilities through{" "}
+                    <a href={SITE.links.yeswehack}>YesWeHack</a>, and have been
+                    recognized by Alibaba Group, TAG Heuer and Free Mobile.
+                </p>
+                {HALL_OF_FAME.length > 0 && (
+                    <ul class="hof hof-inline">
+                        {HALL_OF_FAME.map((c) => (
+                            <li class="hof-item" title={c.name}>
+                                <img
+                                    src={c.logo}
+                                    alt={c.name}
+                                    loading="lazy"
+                                    decoding="async"
+                                    referrerpolicy="no-referrer"
+                                />
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
+        </section>
+
+        <section class="about-sec split" aria-labelledby="contact">
+            <div class="gutter sec-tag" aria-hidden="true">
+                <span>04</span>
+            </div>
+            <div class="main prose">
+                <h2 id="contact">Contact</h2>
+                <p>
+                    The easiest way to reach me is by email, at{" "}
+                    <a href={`mailto:${SITE.email}`}>{SITE.email}</a>. Please
+                    encrypt your message with my PGP public key below, so that
+                    what you send stays between us. If you think you’ve found an
+                    issue in one of my projects, please report it privately this
+                    way before opening a public issue.
+                </p>
+                <p class="btn-row">
+                    <a class="btn" href={`mailto:${SITE.email}`}>
+                        Email <span aria-hidden="true">→</span>
+                    </a>
+                    <a class="btn" href={SITE.links.github}>
+                        GitHub <span aria-hidden="true">↗</span>
+                    </a>
+                    <a class="btn" href={SITE.links.yeswehack}>
+                        YesWeHack <span aria-hidden="true">↗</span>
+                    </a>
+                </p>
+
+                <div class="pgp" id="pgp">
+                    <div class="pgp-head">
+                        <strong>PGP public key</strong>
+                        <span class="pgp-actions">
+                            <button type="button" class="pgp-btn" data-copy-pgp>
+                                Copy
+                            </button>
+                            <a
+                                class="pgp-btn"
+                                href={url(PGP.file)}
+                                download="h3ik0.asc"
+                            >
+                                Download .asc
+                            </a>
+                        </span>
+                    </div>
+                    <p class="pgp-fpr">
+                        <span>Fingerprint</span>
+                        <code>{PGP.fingerprint}</code>
+                    </p>
+                    <details>
+                        <summary>Show the key</summary>
+                        <pre class="pgp-key" data-pgp-key>{PGP.key.trim()}</pre>
+                    </details>
+                </div>
+            </div>
+        </section>
+    </div>
+</Base>
+
+<script>
+    // Delegated, so it keeps working after client-side page swaps.
+    document.addEventListener("click", async (e) => {
+        const btn = (e.target as Element | null)?.closest<HTMLButtonElement>(
+            "[data-copy-pgp]",
+        );
+        if (!btn) return;
+        const key = document
+            .querySelector<HTMLElement>("[data-pgp-key]")
+            ?.textContent?.trim();
+        if (!key) return;
+        try {
+            await navigator.clipboard.writeText(key);
+            btn.textContent = "Copied";
+        } catch {
+            btn.textContent = "Copy failed";
+        }
+        setTimeout(() => (btn.textContent = "Copy"), 1600);
+    });
+</script>

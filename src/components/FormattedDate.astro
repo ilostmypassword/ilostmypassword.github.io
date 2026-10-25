@@ -1,0 +1,9 @@
+---
+import { isoDate } from '../utils/posts';
+interface Props {
+  date: Date;
+}
+const { date } = Astro.props;
+---
+
+<time datetime={date.toISOString()}>{isoDate(date)}</time>

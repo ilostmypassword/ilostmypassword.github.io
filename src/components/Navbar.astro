@@ -1,0 +1,39 @@
+---
+import { url } from "../utils/posts";
+
+const path = Astro.url.pathname;
+const nav = [
+    { href: url("/"), label: "Home", exact: true },
+    { href: url("/posts/"), label: "Articles" },
+    { href: url("/about/"), label: "About" },
+];
+const isCurrent = (l: { href: string; exact?: boolean }) =>
+    l.exact ? path === l.href : path.startsWith(l.href);
+---
+
+<header class="topbar wrap">
+    <nav class="top-nav" aria-label="Main">
+        <ul>
+            {nav.map((l) => (
+                <li>
+                    <a
+                        href={l.href}
+                        aria-current={isCurrent(l) ? "page" : undefined}
+                    >
+                        {l.label}
+                    </a>
+                </li>
+            ))}
+            <li>
+                <button
+                    class="palette-trigger"
+                    type="button"
+                    data-open-palette
+                    aria-label="Open search (Ctrl K)"
+                >
+                    Search <kbd>Ctrl K</kbd>
+                </button>
+            </li>
+        </ul>
+    </nav>
+</header>

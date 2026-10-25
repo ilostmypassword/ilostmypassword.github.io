@@ -1,0 +1,71 @@
+---
+/**
+ * A redacted CTF flag. Readers click to reveal it, so writeups
+ * don't spoil the answer for someone still working the challenge.
+ *
+ * Usage in an .mdx post:
+ *   import Flag from '../../components/Flag.astro';
+ *   <Flag value="FLAG{s0me_th1ng}" />
+ */
+interface Props {
+    value: string;
+}
+const { value } = Astro.props;
+---
+
+<span class="flag" data-flag>
+    <code class="flag-value" aria-hidden="true">
+        {value}
+    </code>
+    <button type="button" class="flag-reveal">
+        Reveal flag
+    </button>
+</span>
+
+<script>
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const NOISE = [..."0123456789abcdef#%*+=/<>"];
+
+    // The flag "decrypts" left to right when revealed (monospace, so no jitter).
+    function decrypt(el: HTMLElement) {
+        const text = (el.textContent ?? "").trim();
+        if (reduce || !text) return;
+        const start = performance.now();
+        const DURATION = 700;
+        const step = (now: number) => {
+            const p = Math.min(1, (now - start) / DURATION);
+            const n = Math.floor(p * text.length);
+            el.textContent =
+                p === 1
+                    ? text
+                    : text.slice(0, n) +
+                      [...text.slice(n)]
+                          .map((c) =>
+                              /\s/.test(c)
+                                  ? c
+                                  : NOISE[(Math.random() * NOISE.length) | 0],
+                          )
+                          .join("");
+            if (p < 1) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+    }
+
+    document.addEventListener("astro:page-load", () => {
+        document
+            .querySelectorAll<HTMLElement>("[data-flag]:not([data-bound])")
+            .forEach((el) => {
+                el.dataset.bound = "";
+                const btn = el.querySelector("button");
+                const val = el.querySelector("code");
+                btn?.addEventListener("click", () => {
+                    el.classList.add("is-revealed");
+                    val?.removeAttribute("aria-hidden");
+                    val?.setAttribute("tabindex", "-1");
+                    btn.remove();
+                    if (val) decrypt(val);
+                    val?.focus();
+                });
+            });
+    });
+</script>

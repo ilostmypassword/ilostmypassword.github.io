@@ -1,0 +1,25 @@
+{
+  "name": "h3ik0-blog",
+  "type": "module",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "lock": "node scripts/lock.mjs"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^8.1.1",
+    "@astrojs/rss": "^4.0.0",
+    "@astrojs/sitemap": "^3.2.0",
+    "@fontsource-variable/archivo": "^5.1.0",
+    "@fontsource-variable/source-serif-4": "^5.1.0",
+    "@fontsource/ibm-plex-mono": "^5.1.0",
+    "astro": "^7.4.2"
+  },
+  "devDependencies": {
+    "@astrojs/markdown-remark": "^7.3.4"
+  }
+}

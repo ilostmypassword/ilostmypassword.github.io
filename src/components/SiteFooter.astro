@@ -1,0 +1,41 @@
+---
+import { SITE, SOCIALS } from "../consts";
+import { url } from "../utils/posts";
+
+// Decorative `hexdump -C` of a short message, generated at build time.
+const message = `${SITE.title} :: nothing is real :: not even you`;
+const bytes = Array.from(new TextEncoder().encode(message));
+const hex = (n: number, width: number) => n.toString(16).padStart(width, "0");
+
+const rows: { off: string; hex: string; asc: string }[] = [];
+for (let i = 0; i < bytes.length; i += 16) {
+    const chunk = bytes.slice(i, i + 16);
+    const cells = Array.from({ length: 16 }, (_, k) =>
+        k < chunk.length ? hex(chunk[k], 2) : "  ",
+    );
+    rows.push({
+        off: hex(i, 8),
+        hex: `${cells.slice(0, 8).join(" ")}  ${cells.slice(8).join(" ")}`,
+        asc: chunk
+            .map((b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : "."))
+            .join(""),
+    });
+}
+const end = hex(bytes.length, 8);
+
+const links = [
+    { label: "About", href: url("/about/") },
+    ...SOCIALS.map((s) => ({ label: s.label, href: s.href })),
+];
+---
+
+<footer class="site-foot wrap">
+    <pre class="hexdump" aria-hidden="true">{rows.map((r) => (
+<span class="hd-row"><span class="hd-off">{r.off}</span>  <span class="hd-hex">{r.hex}</span>  <span class="hd-asc">|{r.asc}|</span></span>
+))}<span class="hd-row"><span class="hd-off">{end}</span></span></pre>
+    <nav class="foot-links" aria-label="Footer">
+        {links.map((l) => (
+            <a href={l.href}>{l.label}</a>
+        ))}
+    </nav>
+</footer>

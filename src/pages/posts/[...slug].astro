@@ -1,0 +1,255 @@
+---
+import { render } from "astro:content";
+import Base from "../../layouts/Base.astro";
+import FormattedDate from "../../components/FormattedDate.astro";
+import { KINDS, PGP, SITE } from "../../consts";
+import {
+    getPosts,
+    glyphs,
+    readingTime,
+    url,
+    type Post,
+} from "../../utils/posts";
+
+export async function getStaticPaths() {
+    const posts = await getPosts();
+    return posts.map((post, i) => ({
+        params: { slug: post.id },
+        props: { post, newer: posts[i - 1], older: posts[i + 1] },
+    }));
+}
+
+interface Props {
+    post: Post;
+    newer?: Post;
+    older?: Post;
+}
+
+const { post, newer, older } = Astro.props;
+const { title, description, date, updated, kind, event, locked } = post.data;
+
+// Encrypted articles (npm run lock): only ciphertext is available at build time.
+const payloads = import.meta.glob<unknown>("../../content/locked/*.json", {
+    eager: true,
+    import: "default",
+});
+let payload: unknown = null;
+if (locked) {
+    const key = Object.keys(payloads).find((k) =>
+        k.endsWith(`/${post.id}.json`),
+    );
+    if (!key) {
+        throw new Error(
+            `"${post.id}" is marked locked but src/content/locked/${post.id}.json is missing. Run: npm run lock -- ${post.id}`,
+        );
+    }
+    payload = payloads[key];
+}
+
+const rendered = locked ? null : await render(post);
+const Content = rendered?.Content;
+const toc = rendered ? rendered.headings.filter((h) => h.depth === 2) : [];
+const minutes = locked ? 0 : readingTime(post.body);
+
+const mailto = `mailto:${SITE.email}?subject=${encodeURIComponent(`Access request: ${title}`)}&body=${encodeURIComponent(`Hello,\n\nI would like to read "${title}".\n\n(Who I am / why I am asking)\n`)}`;
+---
+
+<Base title={title} description={description} type="article" private={locked}>
+    <article
+        class="post wrap split"
+        data-locked={locked ? "" : undefined}
+        data-slug={locked ? post.id : undefined}
+    >
+        <header class="main post-top post-header">
+            <h1 data-locked-title={locked ? "" : undefined}>{title}</h1>
+            {locked ? (
+                <p class="post-lede log-glyph" data-locked-lede data-glyph>
+                    <span class="sr-only">Encrypted article</span>
+                    <span aria-hidden="true" data-glyph-text>
+                        {glyphs(description)}
+                    </span>
+                </p>
+            ) : (
+                <p class="post-lede">{description}</p>
+            )}
+        </header>
+
+        <aside class="gutter post-meta">
+            <div class="post-meta-inner">
+                <dl>
+                    <div>
+                        <dt>Published</dt>
+                        <dd>
+                            <FormattedDate date={date} />
+                        </dd>
+                    </div>
+                    {updated && (
+                        <div>
+                            <dt>Updated</dt>
+                            <dd>
+                                <FormattedDate date={updated} />
+                            </dd>
+                        </div>
+                    )}
+                    <div>
+                        <dt>Type</dt>
+                        <dd class="kind">{KINDS[kind]}</dd>
+                    </div>
+                    {locked ? (
+                        <div>
+                            <dt>Access</dt>
+                            <dd>Encrypted</dd>
+                        </div>
+                    ) : (
+                        <>
+                            {event && (
+                                <div>
+                                    <dt>
+                                        {kind === "bounty"
+                                            ? "Program"
+                                            : "Event"}
+                                    </dt>
+                                    <dd>{event}</dd>
+                                </div>
+                            )}
+                            <div>
+                                <dt>Reading time</dt>
+                                <dd>{minutes} min</dd>
+                            </div>
+                        </>
+                    )}
+                </dl>
+
+                {locked && <div data-locked-toc />}
+
+                {toc.length >= 3 && (
+                    <nav class="toc" aria-label="On this page">
+                        <p>On this page</p>
+                        <ol>
+                            {toc.map((h) => (
+                                <li>
+                                    <a href={`#${h.slug}`}>{h.text}</a>
+                                </li>
+                            ))}
+                        </ol>
+                    </nav>
+                )}
+            </div>
+        </aside>
+
+        <div class="main post-content">
+            {locked ? (
+                <>
+                    <section class="gate" data-gate>
+                        <span class="gate-icon" aria-hidden="true">
+                            <svg
+                                width="26"
+                                height="26"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.7"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <rect
+                                    x="4.5"
+                                    y="10.5"
+                                    width="15"
+                                    height="10"
+                                    rx="2"
+                                />
+                                <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+                                <circle
+                                    cx="12"
+                                    cy="15.5"
+                                    r="1.2"
+                                    fill="currentColor"
+                                />
+                            </svg>
+                        </span>
+                        <h2>Encrypted article</h2>
+                        <p class="gate-sub">
+                            Enter your personal access key to read it.
+                        </p>
+
+                        <form
+                            class="gate-form"
+                            data-gate-form
+                            autocomplete="off"
+                        >
+                            <label class="sr-only" for="gate-key">
+                                Access key
+                            </label>
+                            <input
+                                id="gate-key"
+                                type="password"
+                                name="key"
+                                placeholder="Paste your access key"
+                                autocomplete="off"
+                                autocapitalize="off"
+                                spellcheck="false"
+                            />
+                            <button type="submit">Unlock</button>
+                        </form>
+                        <p
+                            class="gate-error"
+                            data-gate-error
+                            role="alert"
+                            hidden
+                        ></p>
+
+                        <p class="gate-help">
+                            No key? <a href={mailto}>Request access</a> by
+                            email, encrypted with my{" "}
+                            <a href={url(PGP.file)} download>
+                                PGP key
+                            </a>
+                            .
+                        </p>
+                    </section>
+
+                    <div class="prose" data-locked-body hidden />
+                    <button type="button" class="relock" data-relock hidden>
+                        Lock this article again
+                    </button>
+                    <script
+                        type="application/json"
+                        data-payload
+                        set:html={JSON.stringify(payload)}
+                    />
+                </>
+            ) : (
+                <div class="prose">{Content && <Content />}</div>
+            )}
+
+            {(older || newer) && (
+                <nav class="post-nav" aria-label="More posts">
+                    {older && (
+                        <a href={url(`/posts/${older.id}/`)}>
+                            <span>Older</span>
+                            <strong>{older.data.title}</strong>
+                        </a>
+                    )}
+                    {newer && (
+                        <a class="next" href={url(`/posts/${newer.id}/`)}>
+                            <span>Newer</span>
+                            <strong>{newer.data.title}</strong>
+                        </a>
+                    )}
+                </nav>
+            )}
+        </div>
+    </article>
+    <button
+        class="read-toggle"
+        type="button"
+        data-reading-toggle
+        aria-pressed="false"
+        title="Reading mode (F)"
+    >
+        <span class="read-toggle-on">Reading mode</span>
+        <span class="read-toggle-off">Exit</span>
+        <kbd>F</kbd>
+    </button>
+</Base>

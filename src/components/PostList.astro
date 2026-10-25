@@ -1,0 +1,67 @@
+---
+import FormattedDate from "./FormattedDate.astro";
+import { KINDS } from "../consts";
+import { glyphs, url, type Post } from "../utils/posts";
+
+interface Props {
+    posts: Post[];
+    headingLevel?: 2 | 3;
+}
+const { posts, headingLevel = 3 } = Astro.props;
+const H = `h${headingLevel}` as "h2" | "h3";
+---
+
+<ol class="log">
+    {posts.map((post, i) => (
+        <li class="log-entry split" style={`--i:${i}`}>
+            <div class="gutter log-meta">
+                <FormattedDate date={post.data.date} />
+                <span class="kind">{KINDS[post.data.kind]}</span>
+            </div>
+            <div class="main">
+                <H class="log-title">
+                    <a href={url(`/posts/${post.id}/`)}>
+                        {post.data.locked && (
+                            <svg
+                                class="lock-badge"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-label="Encrypted"
+                            >
+                                <rect
+                                    x="4.5"
+                                    y="10.5"
+                                    width="15"
+                                    height="10"
+                                    rx="2"
+                                />
+                                <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+                            </svg>
+                        )}
+                        {post.data.title}
+                    </a>
+                </H>
+                {post.data.locked ? (
+                    <p class="log-desc log-glyph" data-glyph>
+                        <span class="sr-only">Encrypted article</span>
+                        <span aria-hidden="true" data-glyph-text>
+                            {glyphs(post.data.description)}
+                        </span>
+                    </p>
+                ) : (
+                    <p class="log-desc">
+                        {post.data.event && <>{post.data.event}. </>}
+                        {post.data.description}
+                    </p>
+                )}
+            </div>
+            <span class="log-arrow" aria-hidden="true">
+                →
+            </span>
+        </li>
+    ))}
+</ol>

@@ -1,0 +1,906 @@
+---
+/**
+ * EXPERIMENTAL: layered abstract 3D scenes for the inner pages. Same idea as
+ * Scene3D (hand-projected wireframes on a 2D canvas, no dependency), but each
+ * page has its own world:
+ *
+ *  - gimbal  (About)   : gyroscope rings, a scanned point-sphere, a counter
+ *                        rotating icosahedral cage, orbiting cubes.
+ *  - attractor (unused for now): tracers integrating the Aizawa strange attractor in
+ *                        real time, leaving glowing chaotic trails.
+ *  - hopf    (unused for now): the Hopf fibration: linked circles of the 3-sphere,
+ *                        stereographically projected and rotated in 4D.
+ *  - lost    (404)     : a cube that glitches and disintegrates.
+ *
+ * Every scene has parallax dust and reacts to the music (window.__audio,
+ * published by the player): bass punches, levels speed things up, beats
+ * trigger a kick and a shockwave. Silent = calm.
+ * Place inside a positioned container (see .page-head / .lost in global.css).
+ */
+interface Props {
+    variant: "gimbal" | "attractor" | "hopf" | "lost";
+}
+const { variant } = Astro.props;
+---
+
+<canvas class="pscene" data-pscene={variant} aria-hidden="true"></canvas>
+
+<script>
+    export {};
+
+    type V3 = [number, number, number];
+    type Edge = [number, number];
+    interface Levels {
+        bass: number;
+        mid: number;
+        high: number;
+        level: number;
+        beats: number;
+    }
+    interface Frame {
+        ctx: CanvasRenderingContext2D;
+        t: number;
+        w: number;
+        h: number;
+        au: Levels;
+        kick: number;
+        mx: number;
+        my: number;
+        fade: number;
+        spin: number;
+        travel: number;
+    }
+    type Draw = (f: Frame) => void;
+
+    const PURPLE = "106,47,166";
+    const LILAC = "168,112,236";
+    const DIM = "62,32,104";
+    const INK = "217,225,228";
+    const TAU = Math.PI * 2;
+    const SPEED = 0.7;
+
+    const SILENT: Levels = { bass: 0, mid: 0, high: 0, level: 0, beats: 0 };
+    const readAudio = (): Levels =>
+        (window as unknown as { __audio?: Levels }).__audio ?? SILENT;
+
+    const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
+    const smooth = (a: number, b: number, x: number) => {
+        const k = clamp01((x - a) / (b - a));
+        return k * k * (3 - 2 * k);
+    };
+    const hash = (n: number) => {
+        const x = Math.sin(n * 12.9898) * 43758.5453;
+        return x - Math.floor(x);
+    };
+
+    const rotate = (p: V3, rx: number, ry: number, rz: number): V3 => {
+        let [x, y, z] = p;
+        let c = Math.cos(rx);
+        let s = Math.sin(rx);
+        [y, z] = [y * c - z * s, y * s + z * c];
+        c = Math.cos(ry);
+        s = Math.sin(ry);
+        [x, z] = [x * c + z * s, -x * s + z * c];
+        c = Math.cos(rz);
+        s = Math.sin(rz);
+        [x, y] = [x * c - y * s, x * s + y * c];
+        return [x, y, z];
+    };
+    const persp = (z: number) => 1 / (1 + z * 0.25);
+
+    const seg = (
+        ctx: CanvasRenderingContext2D,
+        x1: number,
+        y1: number,
+        x2: number,
+        y2: number,
+        col: string,
+        a: number,
+    ) => {
+        if (a <= 0.004) return;
+        ctx.strokeStyle = `rgba(${col},${Math.min(1, a).toFixed(3)})`;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+    };
+
+    const edgesByDistance = (v: V3[]): Edge[] => {
+        const d = (a: V3, b: V3) =>
+            Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+        let min = Infinity;
+        for (let i = 0; i < v.length; i++)
+            for (let j = i + 1; j < v.length; j++)
+                min = Math.min(min, d(v[i], v[j]));
+        const e: Edge[] = [];
+        for (let i = 0; i < v.length; i++)
+            for (let j = i + 1; j < v.length; j++)
+                if (d(v[i], v[j]) < min * 1.05) e.push([i, j]);
+        return e;
+    };
+
+    // ---------- Shared geometry ----------
+    const OCTA: V3[] = [
+        [1, 0, 0],
+        [-1, 0, 0],
+        [0, 1, 0],
+        [0, -1, 0],
+        [0, 0, 1],
+        [0, 0, -1],
+    ];
+    const OCTA_E: Edge[] = [];
+    for (let i = 0; i < 6; i++)
+        for (let j = i + 1; j < 6; j++)
+            if (Math.floor(i / 2) !== Math.floor(j / 2)) OCTA_E.push([i, j]);
+
+    const CUBE_V: V3[] = [];
+    for (let i = 0; i < 8; i++)
+        CUBE_V.push([i & 1 ? 1 : -1, i & 2 ? 1 : -1, i & 4 ? 1 : -1]);
+    const CUBE_E: Edge[] = [];
+    for (let i = 0; i < 8; i++)
+        for (let j = i + 1; j < 8; j++) {
+            const x = i ^ j;
+            if (x === 1 || x === 2 || x === 4) CUBE_E.push([i, j]);
+        }
+
+    const PHI = (1 + Math.sqrt(5)) / 2;
+    const ICO_V: V3[] = [];
+    for (const a of [-1, 1])
+        for (const b of [-PHI, PHI])
+            ICO_V.push([0, a, b], [a, b, 0], [b, 0, a]);
+    {
+        const r = Math.hypot(0, 1, PHI);
+        for (const v of ICO_V) {
+            v[0] /= r;
+            v[1] /= r;
+            v[2] /= r;
+        }
+    }
+    const ICO_E = edgesByDistance(ICO_V);
+
+    const FIB: V3[] = Array.from({ length: 150 }, (_, i) => {
+        const y = 1 - (2 * (i + 0.5)) / 150;
+        const r = Math.sqrt(1 - y * y);
+        const th = i * 2.399963;
+        return [Math.cos(th) * r, y, Math.sin(th) * r] as V3;
+    });
+
+    const miniCube = (
+        ctx: CanvasRenderingContext2D,
+        X: number,
+        Y: number,
+        size: number,
+        rx: number,
+        ry: number,
+        col: string,
+        a: number,
+    ) => {
+        const vs = CUBE_V.map((v) => {
+            const q = rotate(v, rx, ry, 0);
+            const k = persp(q[2]);
+            return [X + q[0] * size * k, Y + q[1] * size * k];
+        });
+        for (const [i, j] of CUBE_E)
+            seg(ctx, vs[i][0], vs[i][1], vs[j][0], vs[j][1], col, a);
+    };
+
+    // ---------- gimbal (About) ----------
+    const gimbal: Draw = ({ ctx, t, w, h, au, kick, mx, my, fade, spin }) => {
+        const cx = w * 0.72;
+        const cy = h * 0.5;
+        const R = Math.min(w, h) * 0.4 * (1 + au.bass * 0.1 + kick * 0.1);
+        const pit = my * 0.3;
+        const yaw = mx * 0.4;
+        const place = (p: V3): V3 => {
+            const q = rotate(p, pit, yaw, 0);
+            const k = persp(q[2]);
+            return [cx + q[0] * R * k, cy + q[1] * R * k, q[2]];
+        };
+        const glow = 1 + au.level * 0.9 + kick * 0.6;
+        ctx.lineWidth = 1;
+
+        // Outer icosahedral cage, counter-rotating.
+        const cage = ICO_V.map((v) =>
+            place(
+                rotate(
+                    [v[0] * 1.75, v[1] * 1.75, v[2] * 1.75],
+                    -t * 0.12 - spin * 0.3,
+                    t * 0.17,
+                    0,
+                ),
+            ),
+        );
+        for (const [a, b] of ICO_E)
+            seg(
+                ctx,
+                cage[a][0],
+                cage[a][1],
+                cage[b][0],
+                cage[b][1],
+                DIM,
+                (0.1 + 0.1 * clamp01(0.5 - (cage[a][2] + cage[b][2]) * 0.2)) *
+                    fade *
+                    glow,
+            );
+
+        // Point sphere lit by a scan beam.
+        const scanY = Math.sin(t * 0.7 + spin) * 1.1;
+        for (let i = 0; i < FIB.length; i++) {
+            const v = FIB[i];
+            const r = rotate(
+                [v[0] * 0.82, v[1] * 0.82, v[2] * 0.82],
+                0.3,
+                t * 0.25 + spin * 0.6,
+                0,
+            );
+            const g = Math.exp(-(((r[1] - scanY) / 0.13) ** 2));
+            const q = place(r);
+            const depth = clamp01(0.5 - q[2] * 0.5);
+            const sz = 0.9 + depth * 1.1 + g * 1.8 + au.bass * 0.7 * depth;
+            const a = Math.min(
+                1,
+                (0.18 + 0.35 * depth) * fade + g * 0.6 + au.level * 0.25,
+            );
+            ctx.fillStyle = `rgba(${g > 0.25 ? LILAC : PURPLE},${a.toFixed(3)})`;
+            ctx.fillRect(q[0] - sz / 2, q[1] - sz / 2, sz, sz);
+        }
+
+        // Gyroscope rings.
+        const rings: V3[] = [
+            [t * 0.45 + spin, 0.35, 0],
+            [1.1, t * 0.55 + spin * 1.3, 0.2],
+            [0.3, 1.2 + Math.sin(t * 0.3) * 0.3, t * 0.35 + spin * 0.8],
+        ];
+        const SEG = 72;
+        rings.forEach((rg, i) => {
+            const rad = 1.05 - i * 0.16;
+            const on = (a: number) =>
+                place(
+                    rotate(
+                        [Math.cos(a) * rad, Math.sin(a) * rad, 0],
+                        rg[0],
+                        rg[1],
+                        rg[2],
+                    ),
+                );
+            let prev = on(0);
+            for (let s = 1; s <= SEG; s++) {
+                const cur = on((s / SEG) * TAU);
+                const near = clamp01(0.5 - (prev[2] + cur[2]) * 0.25);
+                seg(
+                    ctx,
+                    prev[0],
+                    prev[1],
+                    cur[0],
+                    cur[1],
+                    i === 1 ? PURPLE : DIM,
+                    (0.14 + 0.45 * near) *
+                        fade *
+                        (1 + au.mid * 1.1 + kick * 0.6),
+                );
+                prev = cur;
+            }
+            const head = t * (0.9 + i * 0.35) + i * 2 + spin * 1.5;
+            let p0 = on(head);
+            for (let j = 1; j <= 14; j++) {
+                const p1 = on(head - j * 0.07);
+                seg(
+                    ctx,
+                    p0[0],
+                    p0[1],
+                    p1[0],
+                    p1[1],
+                    LILAC,
+                    (1 - j / 14) * 0.7 * fade,
+                );
+                p0 = p1;
+            }
+            const hp = on(head);
+            const bs = 3 + au.high * 3;
+            ctx.fillStyle = `rgba(${LILAC},${(0.95 * fade).toFixed(3)})`;
+            ctx.fillRect(hp[0] - bs / 2, hp[1] - bs / 2, bs, bs);
+        });
+
+        // Orbiting cubes with trails.
+        for (let i = 0; i < 3; i++) {
+            const orbit = (ang: number) =>
+                place(
+                    rotate(
+                        [
+                            Math.cos(ang) * 1.45,
+                            Math.sin(ang * 0.6) * 0.25,
+                            Math.sin(ang) * 1.45,
+                        ],
+                        0.5 * i + 0.2,
+                        0,
+                        0.3 * i,
+                    ),
+                );
+            const ang = t * (0.5 + i * 0.17) + i * 2.1 + spin * 1.2;
+            let prev = orbit(ang);
+            for (let j = 1; j <= 10; j++) {
+                const cur = orbit(ang - j * 0.09);
+                seg(
+                    ctx,
+                    prev[0],
+                    prev[1],
+                    cur[0],
+                    cur[1],
+                    LILAC,
+                    (1 - j / 10) * 0.35 * fade,
+                );
+                prev = cur;
+            }
+            const c = orbit(ang);
+            miniCube(
+                ctx,
+                c[0],
+                c[1],
+                R * 0.07 * (1 + kick * 0.4),
+                t * 0.9 + i,
+                t * 0.7 + i * 2,
+                LILAC,
+                (0.45 + kick * 0.4) * fade,
+            );
+        }
+
+        // Core octahedron.
+        const core = OCTA.map((v) =>
+            place(
+                rotate(
+                    [v[0] * 0.2, v[1] * 0.2, v[2] * 0.2],
+                    t * 0.8,
+                    t * 0.6 + spin,
+                    0,
+                ),
+            ),
+        );
+        for (const [a, b] of OCTA_E)
+            seg(
+                ctx,
+                core[a][0],
+                core[a][1],
+                core[b][0],
+                core[b][1],
+                LILAC,
+                (0.45 + kick * 0.5 + au.bass * 0.3) * fade,
+            );
+    };
+
+    // ---------- attractor (Articles): Aizawa strange attractor ----------
+    const AZ = { a: 0.95, b: 0.7, c: 0.6, d: 3.5, e: 0.25, f: 0.1 };
+    const TRACERS = 14;
+    const TRAIL = 90;
+    const SUBSTEP = 0.009;
+    interface Tracer {
+        p: V3;
+        hist: Float32Array;
+        head: number;
+    }
+    let as = 17;
+    const arnd = () => ((as = (as * 16807) % 2147483647) - 1) / 2147483646;
+
+    const integrate = (p: V3) => {
+        const [x, y, z] = p;
+        const dx = (z - AZ.b) * x - AZ.d * y;
+        const dy = AZ.d * x + (z - AZ.b) * y;
+        const dz =
+            AZ.c +
+            AZ.a * z -
+            (z * z * z) / 3 -
+            (x * x + y * y) * (1 + AZ.e * z) +
+            AZ.f * z * x * x * x;
+        p[0] += dx * SUBSTEP;
+        p[1] += dy * SUBSTEP;
+        p[2] += dz * SUBSTEP;
+    };
+    const reseed = (p: V3) => {
+        p[0] = 0.1 + (arnd() - 0.5) * 0.6;
+        p[1] = (arnd() - 0.5) * 0.6;
+        p[2] = (arnd() - 0.5) * 0.4;
+    };
+    const advance = (tr: Tracer, n: number) => {
+        for (let k = 0; k < n; k++) {
+            for (let s = 0; s < 3; s++) integrate(tr.p);
+            if (
+                !Number.isFinite(tr.p[0] + tr.p[1] + tr.p[2]) ||
+                Math.hypot(...tr.p) > 6
+            )
+                reseed(tr.p);
+            tr.hist[tr.head * 3] = tr.p[0];
+            tr.hist[tr.head * 3 + 1] = tr.p[1];
+            tr.hist[tr.head * 3 + 2] = tr.p[2];
+            tr.head = (tr.head + 1) % TRAIL;
+        }
+    };
+    const tracers: Tracer[] = Array.from({ length: TRACERS }, () => {
+        const tr: Tracer = {
+            p: [0, 0, 0],
+            hist: new Float32Array(TRAIL * 3),
+            head: 0,
+        };
+        reseed(tr.p);
+        for (let i = 0; i < 400; i++) integrate(tr.p); // settle onto the attractor
+        advance(tr, TRAIL);
+        return tr;
+    });
+
+    const attractor: Draw = ({
+        ctx,
+        t,
+        w,
+        h,
+        au,
+        kick,
+        mx,
+        my,
+        fade,
+        spin,
+    }) => {
+        const cx = w * 0.7;
+        const cy = h * 0.5;
+        const R = Math.min(w, h) * 0.34 * (1 + au.bass * 0.08 + kick * 0.08);
+        const rx = 0.9 + Math.sin(t * 0.17) * 0.25 + my * 0.3;
+        const ry = t * 0.18 + spin * 0.5 + mx * 0.5;
+        const glow = 1 + au.level * 0.8 + kick * 0.7;
+        const steps = 1 + Math.round(au.level * 2 + kick * 2);
+        ctx.lineWidth = 1;
+
+        for (const tr of tracers) {
+            advance(tr, steps);
+            let px = 0;
+            let py = 0;
+            let pdepth = 0;
+            for (let i = 0; i < TRAIL; i++) {
+                const idx = ((tr.head + i) % TRAIL) * 3;
+                const q = rotate(
+                    [tr.hist[idx], tr.hist[idx + 1], tr.hist[idx + 2] - 0.4],
+                    rx,
+                    ry,
+                    0,
+                );
+                const k = persp(q[2] * 0.6);
+                const X = cx + q[0] * R * k;
+                const Y = cy + q[1] * R * k;
+                const depth = clamp01(0.5 - q[2] * 0.3);
+                if (i > 0) {
+                    const f = i / TRAIL;
+                    seg(
+                        ctx,
+                        px,
+                        py,
+                        X,
+                        Y,
+                        f > 0.82 ? LILAC : PURPLE,
+                        f *
+                            f *
+                            0.6 *
+                            fade *
+                            glow *
+                            (0.45 + 0.55 * (depth + pdepth) * 0.5),
+                    );
+                }
+                px = X;
+                py = Y;
+                pdepth = depth;
+            }
+            const hs = 2.2 + au.high * 2.5 + kick * 1.5;
+            ctx.fillStyle = `rgba(${LILAC},${(0.95 * fade).toFixed(3)})`;
+            ctx.fillRect(px - hs / 2, py - hs / 2, hs, hs);
+        }
+    };
+
+    // ---------- hopf (Now): Hopf fibration ----------
+    const HOPF_RINGS = [
+        { th: Math.PI * 0.26, n: 8, col: LILAC, a: 0.55 },
+        { th: Math.PI * 0.5, n: 10, col: PURPLE, a: 0.5 },
+        { th: Math.PI * 0.76, n: 8, col: DIM, a: 0.7 },
+    ];
+
+    const hopf: Draw = ({ ctx, t, w, h, au, kick, mx, my, fade, spin }) => {
+        const cx = w * 0.7;
+        const cy = h * 0.5;
+        const R = Math.min(w, h) * 0.17 * (1 + au.bass * 0.1 + kick * 0.1);
+        const a4 = t * 0.16 + spin * 0.8;
+        const b4 = t * 0.11 + spin * 0.5;
+        const rx = 0.5 + Math.sin(t * 0.2) * 0.2 + my * 0.3;
+        const ry = t * 0.12 + mx * 0.5;
+        const ca = Math.cos(a4);
+        const sa = Math.sin(a4);
+        const cb = Math.cos(b4);
+        const sb = Math.sin(b4);
+        const glow = 1 + au.mid * 1.0 + kick * 0.7;
+        ctx.lineWidth = 1;
+
+        // One point on the fibre over (theta, phi), stereographically projected.
+        const fibre = (th: number, phi: number, psi: number) => {
+            const c1 = Math.cos(th / 2);
+            const s1 = Math.sin(th / 2);
+            let x1 = c1 * Math.cos(psi + phi);
+            let x2 = c1 * Math.sin(psi + phi);
+            let x3 = s1 * Math.cos(psi);
+            let x4 = s1 * Math.sin(psi);
+            [x1, x4] = [x1 * ca - x4 * sa, x1 * sa + x4 * ca];
+            [x2, x3] = [x2 * cb - x3 * sb, x2 * sb + x3 * cb];
+            const den = 1 - x4;
+            if (den < 0.3) return null;
+            const p: V3 = [x1 / den, x2 / den, x3 / den];
+            const mag = Math.hypot(...p);
+            if (mag > 3.2) return null;
+            const r = rotate(p, rx, ry, 0);
+            const k = persp(r[2] * 0.5);
+            return {
+                X: cx + r[0] * R * k,
+                Y: cy + r[1] * R * k,
+                depth: clamp01(0.5 - r[2] * 0.15),
+                edge: 1 - smooth(2.2, 3.2, mag),
+            };
+        };
+
+        const SEG = 48;
+        for (const ring of HOPF_RINGS) {
+            for (let j = 0; j < ring.n; j++) {
+                const phi = (j / ring.n) * TAU + t * 0.05;
+                let prev: ReturnType<typeof fibre> = null;
+                for (let s = 0; s <= SEG; s++) {
+                    const cur = fibre(ring.th, phi, (s / SEG) * TAU);
+                    if (prev && cur)
+                        seg(
+                            ctx,
+                            prev.X,
+                            prev.Y,
+                            cur.X,
+                            cur.Y,
+                            ring.col,
+                            (0.08 + ring.a * 0.5 * cur.depth) *
+                                fade *
+                                glow *
+                                cur.edge,
+                        );
+                    prev = cur;
+                }
+                // A bead sliding along the first fibres of each ring.
+                if (j < 2) {
+                    const b = fibre(
+                        ring.th,
+                        phi,
+                        t * (0.7 + j * 0.3) + spin * 2 + j,
+                    );
+                    if (b) {
+                        const bs = 2.5 + au.high * 3;
+                        ctx.fillStyle = `rgba(${LILAC},${(0.9 * fade * b.edge).toFixed(3)})`;
+                        ctx.fillRect(b.X - bs / 2, b.Y - bs / 2, bs, bs);
+                    }
+                }
+            }
+        }
+    };
+
+    // ---------- lost (404) ----------
+    let seed = 11;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+    const GRID = [-1, -0.5, 0, 0.5, 1];
+    const CUBE: { p: V3; d: V3 }[] = [];
+    for (let axis = 0; axis < 3; axis++)
+        for (const sign of [-1, 1])
+            for (const u of GRID)
+                for (const v of GRID) {
+                    const p: V3 = [0, 0, 0];
+                    p[axis] = sign;
+                    p[(axis + 1) % 3] = u;
+                    p[(axis + 2) % 3] = v;
+                    CUBE.push({
+                        p,
+                        d: [rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1],
+                    });
+                }
+
+    const lost: Draw = ({ ctx, t, w, h, au, kick, mx, my, fade, spin }) => {
+        const cx = w * 0.72;
+        const cy = h * 0.5;
+        const R = Math.min(w, h) * 0.3 * (1 + au.bass * 0.08);
+        const ph = (t % 7) / 7;
+        const e = ph < 0.55 ? 0 : Math.sin(((ph - 0.55) / 0.45) * Math.PI);
+        const ex = Math.min(1.4, e + kick * 0.25 + au.bass * 0.1);
+        const ry = t * 0.35 + spin * 0.5 + mx * 0.5;
+        const rx = 0.5 + Math.sin(t * 0.3) * 0.2 + my * 0.3;
+        ctx.lineWidth = 1;
+
+        const proj = (
+            v: V3,
+            scale: number,
+            rY: number,
+        ): [number, number, number] => {
+            const q = rotate(v, rx, rY, 0);
+            const k = persp(q[2]);
+            return [cx + q[0] * scale * k, cy + q[1] * scale * k, q[2]];
+        };
+
+        // Wire cubes (outer + counter-rotating inner) fade out while shattering.
+        const wireA = (1 - Math.min(1, ex * 1.5)) * fade;
+        if (wireA > 0.01) {
+            const outer = CUBE_V.map((v) => proj(v, R, ry));
+            const inner = CUBE_V.map((v) =>
+                proj([v[0] * 0.5, v[1] * 0.5, v[2] * 0.5], R, -ry * 1.4),
+            );
+            for (const [a, b] of CUBE_E) {
+                seg(
+                    ctx,
+                    outer[a][0],
+                    outer[a][1],
+                    outer[b][0],
+                    outer[b][1],
+                    PURPLE,
+                    0.4 * wireA,
+                );
+                seg(
+                    ctx,
+                    inner[a][0],
+                    inner[a][1],
+                    inner[b][0],
+                    inner[b][1],
+                    LILAC,
+                    0.35 * wireA,
+                );
+            }
+            for (let i = 0; i < 8; i++)
+                seg(
+                    ctx,
+                    outer[i][0],
+                    outer[i][1],
+                    inner[i][0],
+                    inner[i][1],
+                    DIM,
+                    0.18 * wireA,
+                );
+        }
+
+        // Orbit ring with a bead.
+        const ring = (a: number) => {
+            const q = rotate(
+                [Math.cos(a) * 1.9, 0, Math.sin(a) * 1.9],
+                0.9 + Math.sin(t * 0.2) * 0.2,
+                t * 0.15,
+                0.4,
+            );
+            const k = persp(q[2]);
+            return [cx + q[0] * R * k, cy + q[1] * R * k, q[2]];
+        };
+        let rp = ring(0);
+        for (let s = 1; s <= 72; s++) {
+            const cur = ring((s / 72) * TAU);
+            seg(
+                ctx,
+                rp[0],
+                rp[1],
+                cur[0],
+                cur[1],
+                DIM,
+                (0.1 + 0.25 * clamp01(0.5 - (rp[2] + cur[2]) * 0.25)) *
+                    fade *
+                    (1 + au.mid),
+            );
+            rp = cur;
+        }
+        const bead = ring(t * 1.1 + spin * 2);
+        ctx.fillStyle = `rgba(${LILAC},${(0.9 * fade).toFixed(3)})`;
+        ctx.fillRect(bead[0] - 1.5, bead[1] - 1.5, 3, 3);
+
+        // Face points, tethered to their home position while shattered.
+        CUBE.forEach(({ p, d }, idx) => {
+            const home = proj(p, R, ry);
+            const q: V3 = [
+                p[0] * (1 + ex * d[0] * 1.6),
+                p[1] * (1 + ex * d[1] * 1.6),
+                p[2] * (1 + ex * d[2] * 1.6),
+            ];
+            const r = proj(q, R, ry);
+            let X = r[0];
+            if (e > 0.05) {
+                const slice = Math.floor(
+                    (rotate(q, rx, ry, 0)[1] + 1.5) * 4 + t * 9,
+                );
+                if (slice % 3 === 0) X += (hash(slice) - 0.5) * e * 40;
+            }
+            if (ex > 0.15 && idx % 3 === 0)
+                seg(
+                    ctx,
+                    home[0],
+                    home[1],
+                    X,
+                    r[1],
+                    PURPLE,
+                    0.14 * Math.min(1, ex) * fade,
+                );
+            const depth = clamp01(0.5 - r[2] * 0.4);
+            const a =
+                (0.25 + 0.5 * depth) * fade * (1 - Math.min(1, ex) * 0.35);
+            const sz = 1.6 + depth * 1.2;
+            ctx.fillStyle = `rgba(${e > 0.3 ? LILAC : PURPLE},${a.toFixed(3)})`;
+            ctx.fillRect(X - sz / 2, r[1] - sz / 2, sz, sz);
+        });
+
+        // Glitch bars while the cube is falling apart.
+        if (e > 0.25) {
+            const frameId = Math.floor(t * 12);
+            for (let i = 0; i < 6; i++) {
+                const y = hash(frameId * 3 + i) * h;
+                const bw = (0.15 + hash(frameId + i * 5) * 0.4) * w;
+                const x = cx - bw / 2 + (hash(frameId * 7 + i) - 0.5) * 120;
+                ctx.fillStyle = `rgba(${LILAC},${(e * 0.22 * fade).toFixed(3)})`;
+                ctx.fillRect(x, y, bw, 1 + hash(i + frameId) * 2);
+            }
+        }
+    };
+
+    const DRAWS: Record<string, Draw> = { gimbal, attractor, hopf, lost };
+    // Where beat shockwaves start, as fractions of the canvas.
+    const ANCHOR: Record<string, [number, number]> = {
+        gimbal: [0.72, 0.5],
+        attractor: [0.7, 0.5],
+        hopf: [0.7, 0.5],
+        lost: [0.72, 0.5],
+    };
+
+    // ---------- Dust (shared) ----------
+    let ds = 5;
+    const drnd = () => ((ds = (ds * 16807) % 2147483647) - 1) / 2147483646;
+    const DUST = Array.from({ length: 70 }, () => ({
+        x: drnd(),
+        y: drnd(),
+        vx: 0.004 + drnd() * 0.01,
+        vy: (drnd() - 0.5) * 0.006,
+        layer: 0.3 + drnd() * 1.7,
+        a: 0.15 + drnd() * 0.4,
+        tw: drnd() * TAU,
+        col: drnd() < 0.7 ? PURPLE : INK,
+    }));
+
+    // ---------- Engine ----------
+    let targetX = 0;
+    let targetY = 0;
+    window.addEventListener("pointermove", (ev) => {
+        targetX = (ev.clientX / window.innerWidth) * 2 - 1;
+        targetY = (ev.clientY / window.innerHeight) * 2 - 1;
+    });
+
+    let stop: (() => void) | null = null;
+
+    function start(canvas: HTMLCanvasElement, variant: string, draw: Draw) {
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return () => {};
+        const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const [afx, afy] = ANCHOR[variant] ?? [0.7, 0.5];
+
+        let w = 0;
+        let h = 0;
+        let visible = true;
+        let raf = 0;
+        let mx = 0;
+        let my = 0;
+        let spin = 0;
+        let travel = 0;
+        let kick = 0;
+        let last = 0;
+        let lastBeats = readAudio().beats;
+        const waves: { t: number; s: number }[] = [];
+
+        const resize = () => {
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            w = canvas.clientWidth;
+            h = canvas.clientHeight;
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        };
+
+        const render = (t: number, au: Levels) => {
+            ctx.clearRect(0, 0, w, h);
+            const fade = w < 700 ? 0.6 : 1;
+
+            for (const d of DUST) {
+                const x = (((d.x + t * d.vx) % 1) + 1) % 1;
+                const y = (((d.y + t * d.vy) % 1) + 1) % 1;
+                const tw = 0.6 + 0.4 * Math.sin(t * 1.3 + d.tw);
+                ctx.fillStyle = `rgba(${d.col},${Math.min(1, d.a * tw * fade * (1 + au.high * 1.6)).toFixed(3)})`;
+                ctx.fillRect(
+                    x * w + mx * d.layer * 10,
+                    y * h + my * d.layer * 7,
+                    1.5,
+                    1.5,
+                );
+            }
+
+            draw({ ctx, t, w, h, au, kick, mx, my, fade, spin, travel });
+
+            // Beat shockwaves: a bright front and a fainter echo.
+            const base = Math.min(w, h) * 0.3;
+            const LIFE = 1.5;
+            for (let i = waves.length - 1; i >= 0; i--) {
+                const wv = waves[i];
+                const age = t - wv.t;
+                if (age > LIFE + 0.3 || age < 0) {
+                    waves.splice(i, 1);
+                    continue;
+                }
+                for (let echo = 0; echo < 2; echo++) {
+                    const k = (age - echo * 0.22) / LIFE;
+                    if (k < 0 || k > 1) continue;
+                    const rad = base * (0.65 + k * 3.1);
+                    const fall = (1 - k) * (1 - k);
+                    ctx.strokeStyle = `rgba(${LILAC},${Math.min(1, fall * wv.s * (echo ? 0.5 : 1) * fade * 0.8).toFixed(3)})`;
+                    ctx.lineWidth = (echo ? 1.2 : 2.6) * (0.4 + fall * 0.9);
+                    ctx.beginPath();
+                    ctx.ellipse(
+                        w * afx,
+                        h * afy,
+                        rad,
+                        rad * 0.4,
+                        -0.35,
+                        0,
+                        TAU,
+                    );
+                    ctx.stroke();
+                }
+            }
+            ctx.lineWidth = 1;
+        };
+
+        const frame = (now: number) => {
+            const dt = Math.min(0.05, (now - last) / 1000 || 0.016) * SPEED;
+            last = now;
+            mx += (targetX - mx) * 0.06;
+            my += (targetY - my) * 0.06;
+            const au = readAudio();
+            spin += dt * (au.level * 0.55 + au.bass * 0.35);
+            travel += dt * (0.07 + au.level * 0.3 + kick * 0.12);
+            kick *= Math.exp((-dt * 4.5) / SPEED);
+            if (au.beats !== lastBeats) {
+                lastBeats = au.beats;
+                kick = Math.max(kick, Math.min(1.3, 0.6 + au.bass * 0.9));
+                waves.push({
+                    t: (now / 1000) * SPEED,
+                    s: 0.85 + au.bass * 0.9,
+                });
+                if (waves.length > 5) waves.shift();
+            }
+            if (visible) render((now / 1000) * SPEED, au);
+            raf = requestAnimationFrame(frame);
+        };
+
+        resize();
+        const ro = new ResizeObserver(() => {
+            resize();
+            if (reduce) render(1.5, SILENT);
+        });
+        ro.observe(canvas);
+        const io = new IntersectionObserver(
+            ([entry]) => (visible = entry.isIntersecting),
+        );
+        io.observe(canvas);
+
+        if (reduce) render(1.5, SILENT);
+        else raf = requestAnimationFrame(frame);
+
+        return () => {
+            cancelAnimationFrame(raf);
+            ro.disconnect();
+            io.disconnect();
+        };
+    }
+
+    document.addEventListener("astro:page-load", () => {
+        stop?.();
+        stop = null;
+        const canvas = document.querySelector<HTMLCanvasElement>(
+            "canvas[data-pscene]",
+        );
+        const variant = canvas?.dataset.pscene ?? "";
+        const draw = DRAWS[variant];
+        if (canvas && draw) stop = start(canvas, variant, draw);
+    });
+    document.addEventListener("astro:before-swap", () => {
+        stop?.();
+        stop = null;
+    });
+</script>

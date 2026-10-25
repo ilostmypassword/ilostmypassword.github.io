@@ -1,0 +1,155 @@
+---
+import "@fontsource-variable/archivo";
+import "@fontsource-variable/source-serif-4";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
+import "../styles/global.css";
+import { ClientRouter } from "astro:transitions";
+import { getImage } from "astro:assets";
+import Sidebar from "../components/Sidebar.astro";
+import Navbar from "../components/Navbar.astro";
+import CommandPalette from "../components/CommandPalette.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+import { SITE } from "../consts";
+import { url } from "../utils/posts";
+
+interface Props {
+    title?: string;
+    description?: string;
+    type?: "website" | "article";
+    private?: boolean;
+}
+
+const {
+    title,
+    description = SITE.description,
+    type = "website",
+    private: isPrivate = false,
+} = Astro.props;
+const fullTitle = title
+    ? `${title} | ${SITE.title}`
+    : `${SITE.title}: ${SITE.tagline}`;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+
+const avatars = import.meta.glob<{ default: ImageMetadata }>(
+    "../assets/{profile,avatar}.{jpg,jpeg,png,webp}",
+    { eager: true },
+);
+const avatarSrc = Object.values(avatars)[0]?.default;
+const hasAvatar = Boolean(avatarSrc);
+const appleIcon = avatarSrc
+    ? await getImage({
+          src: avatarSrc,
+          width: 180,
+          height: 180,
+          fit: "cover",
+          format: "png",
+      })
+    : null;
+---
+
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="color-scheme" content="dark" />
+        <ClientRouter fallback="none" />
+        <title>{fullTitle}</title>
+        <meta name="description" content={description} />
+        <meta name="author" content={SITE.author} />
+        {isPrivate && (
+            <meta name="robots" content="noindex, nofollow, noarchive" />
+        )}
+        {isPrivate && <meta name="referrer" content="no-referrer" />}
+        <link rel="canonical" href={canonical} />
+        {hasAvatar ? (
+            <>
+                <link
+                    rel="icon"
+                    type="image/png"
+                    sizes="128x128"
+                    href={url("/favicon.png")}
+                />
+                <link rel="apple-touch-icon" href={appleIcon?.src} />
+            </>
+        ) : (
+            <link rel="icon" type="image/svg+xml" href={url("/favicon.svg")} />
+        )}
+        <link
+            rel="alternate"
+            type="application/rss+xml"
+            title={SITE.title}
+            href={url("/rss.xml")}
+        />
+        <link rel="sitemap" href={url("/sitemap-index.xml")} />
+        <meta property="og:site_name" content={SITE.title} />
+        <meta property="og:title" content={fullTitle} />
+        <meta property="og:description" content={description} />
+        <meta property="og:type" content={type} />
+        <meta property="og:url" content={canonical} />
+        <meta name="twitter:card" content="summary" />
+        {appleIcon && (
+            <meta
+                property="og:image"
+                content={new URL(appleIcon.src, Astro.site)}
+            />
+        )}
+        <meta name="generator" content={Astro.generator} />
+        <script is:inline>
+            // Boot sequence: on every full page load (not on in-site
+            // navigation), decided before first paint.
+            try {
+                if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                    document.documentElement.classList.add("booting");
+                }
+            } catch (e) {}
+        </script>
+    </head>
+    <body>
+        <div class="boot" data-boot aria-hidden="true">
+            <div class="boot-log" data-boot-log></div>
+            <span class="boot-skip">click or esc to skip</span>
+        </div>
+        <canvas
+            class="backdrop"
+            data-backdrop
+            aria-hidden="true"
+            transition:persist="backdrop"
+        ></canvas>
+        <a class="skip" href="#main">
+            Skip to content
+        </a>
+        <div
+            class="read-progress"
+            transition:persist="progress"
+            aria-hidden="true"
+        >
+            <span></span>
+        </div>
+
+        <div class="shell">
+            <Sidebar />
+            <div class="content">
+                <Navbar />
+                <main id="main">
+                    <slot />
+                </main>
+                <SiteFooter />
+            </div>
+        </div>
+        <CommandPalette />
+        <script>
+            import "../scripts/scramble";
+            import "../scripts/fx";
+            import "../scripts/konami";
+            import "../scripts/external-links";
+            import "../scripts/backdrop";
+            import "../scripts/reading";
+            import "../scripts/code-blocks";
+            import "../scripts/locked";
+            import "../scripts/glyph-desc";
+            import "../scripts/boot";
+        </script>
+    </body>
+</html>

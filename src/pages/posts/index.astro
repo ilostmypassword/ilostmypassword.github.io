@@ -1,0 +1,54 @@
+---
+import Base from "../../layouts/Base.astro";
+import PostList from "../../components/PostList.astro";
+import { getPosts, type Post } from "../../utils/posts";
+
+const posts = await getPosts();
+const byYear = new Map<number, Post[]>();
+for (const p of posts) {
+    const y = p.data.date.getUTCFullYear();
+    byYear.set(y, [...(byYear.get(y) ?? []), p]);
+}
+const count = posts.length;
+const pad = (n: number) => String(n).padStart(2, "0");
+---
+
+<Base
+    title="Articles"
+    description="Every article: CTF writeups, research, bug bounty and notes."
+>
+    <header class="page-head fancy wrap">
+        <p class="eyebrow">archive</p>
+        <h1 class="big-title" data-decode>
+            Articles
+            <span class="big-count" aria-hidden="true">
+                {pad(count)}
+            </span>
+        </h1>
+        <br />
+        <p class="lede term" aria-label="ls -lah /articles">
+            <span class="term-user">h3ik0@blog</span>
+            <span class="term-sep">:</span>
+            <span class="term-path">~</span>
+            <span class="term-sep term-dollar">$</span>
+            <span class="term-cmd" style="--n: 17">
+                ls -lah /articles
+            </span>
+            <span class="term-cursor" aria-hidden="true"></span>
+        </p>
+    </header>
+
+    <div class="wrap archive">
+        {[...byYear.entries()].map(([year, list]) => (
+            <section class="year" aria-labelledby={`y-${year}`}>
+                <h2 class="year-label" id={`y-${year}`}>
+                    <span class="year-num">{year}</span>
+                    <span class="year-rule" aria-hidden="true" />
+                    <span class="year-count">{pad(list.length)}</span>
+                </h2>
+                <PostList posts={list} />
+            </section>
+        ))}
+        {count === 0 && <p class="empty">No articles yet.</p>}
+    </div>
+</Base>

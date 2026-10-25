@@ -1,0 +1,20 @@
+---
+import Base from "../layouts/Base.astro";
+import PageScene from "../components/PageScene.astro";
+import { url } from "../utils/posts";
+---
+
+<Base title="Not found">
+    <section class="lost wrap">
+        <PageScene variant="lost" />
+        <h1>404</h1>
+        <p>
+            Nothing lives at this address. The page may have moved, or the link
+            has a typo.
+        </p>
+        <p>
+            <a href={url("/")}>Go to the homepage</a> or{" "}
+            <a href={url("/posts/")}>browse all articles</a>.
+        </p>
+    </section>
+</Base>

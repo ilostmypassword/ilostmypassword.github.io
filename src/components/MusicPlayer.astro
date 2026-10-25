@@ -1,0 +1,326 @@
+---
+import { MUSIC } from "../consts";
+
+const tracks = MUSIC.playlist;
+---
+
+{tracks.length > 0 && (
+    <section
+        class="side-section player"
+        aria-labelledby="side-music"
+        data-volume={MUSIC.volume}
+        transition:persist="music-player"
+    >
+        <h2 class="side-title" id="side-music">
+            <span class="side-idx">02</span> Playlist
+        </h2>
+        <div class="player-box">
+            <div class="player-row">
+                <button
+                    class="player-btn"
+                    type="button"
+                    data-play
+                    aria-label="Play or pause"
+                >
+                    <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 16 16"
+                        aria-hidden="true"
+                        data-icon-play
+                    >
+                        <path d="M4 2.5v11l9-5.5z" fill="currentColor" />
+                    </svg>
+                    <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 16 16"
+                        aria-hidden="true"
+                        data-icon-pause
+                        style="display:none"
+                    >
+                        <path
+                            d="M3.5 2.5h3.5v11H3.5zM9 2.5h3.5v11H9z"
+                            fill="currentColor"
+                        />
+                    </svg>
+                </button>
+                <div class="player-info">
+                    <p
+                        class="player-track"
+                        data-track-name
+                        title={tracks[0].name}
+                    >
+                        {tracks[0].name}
+                    </p>
+                    <p
+                        class="player-artist"
+                        data-track-artist
+                        title={tracks[0].artist}
+                    >
+                        {tracks[0].artist}
+                    </p>
+                </div>
+            </div>
+            <canvas class="player-scope" data-scope aria-hidden="true"></canvas>
+            <div
+                class="player-progress"
+                data-progress
+                role="progressbar"
+                aria-label="Playback progress"
+            >
+                <span data-progress-fill />
+            </div>
+            <div class="player-row player-controls">
+                <button
+                    class="player-btn small"
+                    type="button"
+                    data-prev
+                    aria-label="Previous track"
+                >
+                    <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 16 16"
+                        aria-hidden="true"
+                    >
+                        <path
+                            d="M3 2.5h2v11H3zM13.5 2.5v11L5.5 8z"
+                            fill="currentColor"
+                        />
+                    </svg>
+                </button>
+                <span class="player-time" data-time>
+                    0:00
+                </span>
+                <button
+                    class="player-btn small"
+                    type="button"
+                    data-next
+                    aria-label="Next track"
+                >
+                    <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 16 16"
+                        aria-hidden="true"
+                    >
+                        <path
+                            d="M11 2.5h2v11h-2zM2.5 2.5v11l8-5.5z"
+                            fill="currentColor"
+                        />
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <audio data-audio preload="none" src={tracks[0].url} />
+        <script define:vars={{ tracks, volume: MUSIC.volume }}>
+            const root = document.currentScript.closest(".player");
+            const audio = root.querySelector("[data-audio]");
+            const btnPlay = root.querySelector("[data-play]");
+            const iconPlay = root.querySelector("[data-icon-play]");
+            const iconPause = root.querySelector("[data-icon-pause]");
+            const elName = root.querySelector("[data-track-name]");
+            const elArtist = root.querySelector("[data-track-artist]");
+            const elTime = root.querySelector("[data-time]");
+            const fill = root.querySelector("[data-progress-fill]");
+            const scope = root.querySelector("[data-scope]");
+            let i = 0;
+            audio.volume = volume;
+
+            const fmt = (s) =>
+                isFinite(s)
+                    ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`
+                    : "0:00";
+            const load = (n, autoplay) => {
+                i = (n + tracks.length) % tracks.length;
+                audio.src = tracks[i].url;
+                elName.textContent = tracks[i].name;
+                elName.title = tracks[i].name;
+                elArtist.textContent = tracks[i].artist;
+                elArtist.title = tracks[i].artist;
+                if (autoplay) audio.play();
+            };
+            // ---- Audio analysis -------------------------------------
+            // Exposes smoothed levels on window.__audio so other parts of
+            // the site (3D hero scene, WebGL backdrop) can react to the music.
+            const levels = (window.__audio = {
+                bass: 0,
+                mid: 0,
+                high: 0,
+                level: 0,
+                beats: 0,
+            });
+            let actx = null;
+            let analyser = null;
+            let freq = null;
+            let wave = null;
+            let analyserTried = false;
+            let loop = 0;
+            let avgBass = 0;
+            let lastBeat = 0;
+
+            const setupAnalyser = () => {
+                if (!analyserTried) {
+                    analyserTried = true;
+                    try {
+                        const AC =
+                            window.AudioContext || window.webkitAudioContext;
+                        actx = new AC();
+                        const source = actx.createMediaElementSource(audio);
+                        analyser = actx.createAnalyser();
+                        analyser.fftSize = 512;
+                        analyser.smoothingTimeConstant = 0.78;
+                        source.connect(analyser);
+                        analyser.connect(actx.destination);
+                        freq = new Uint8Array(analyser.frequencyBinCount);
+                        wave = new Uint8Array(analyser.fftSize);
+                    } catch {
+                        analyser = null;
+                    }
+                }
+                // The element is routed through the context once connected:
+                // a suspended context would mute the music.
+                if (actx && actx.state === "suspended") actx.resume();
+            };
+
+            const band = (from, to) => {
+                let sum = 0;
+                for (let k = from; k < to; k++) sum += freq[k];
+                return sum / ((to - from) * 255);
+            };
+            // Fast attack, slow release.
+            const follow = (cur, target) =>
+                cur + (target - cur) * (target > cur ? 0.5 : 0.08);
+
+            // ---- Scope: mirrored spectrum + oscilloscope line ---------
+            const sctx = scope.getContext("2d");
+            const BARS = 44;
+            const BIN_MAX = 150;
+            const drawScope = (mode, now) => {
+                const dpr = Math.min(2, window.devicePixelRatio || 1);
+                const w = Math.round(scope.clientWidth * dpr);
+                const h = Math.round(scope.clientHeight * dpr);
+                if (!w || !h) return;
+                if (scope.width !== w || scope.height !== h) {
+                    scope.width = w;
+                    scope.height = h;
+                }
+                sctx.clearRect(0, 0, w, h);
+                const mid = h / 2;
+                const slot = w / BARS;
+                const bw = Math.max(1, Math.floor(slot * 0.5));
+                for (let k = 0; k < BARS; k++) {
+                    const x = k * slot + (slot - bw) / 2;
+                    const pos = k / BARS;
+                    let v = 0;
+                    if (mode === "live") {
+                        const bin = Math.floor(
+                            1 + (BIN_MAX - 1) * Math.pow(pos, 1.6),
+                        );
+                        v = Math.pow(freq[bin] / 255, 1.35) * (1 + pos * 0.9);
+                    } else if (mode === "fake") {
+                        v =
+                            0.25 +
+                            0.2 *
+                                Math.sin(now / 260 + k * 0.7) *
+                                Math.sin(now / 900 + k * 0.31);
+                    }
+                    const half = Math.max(dpr, Math.min(1, v) * (mid - dpr));
+                    const a = 0.25 + Math.min(1, v) * 0.6;
+                    sctx.fillStyle = `rgba(160, 100, 224, ${a})`;
+                    sctx.fillRect(x, mid - half, bw, half * 2);
+                }
+                if (mode === "live" && wave) {
+                    sctx.beginPath();
+                    for (let k = 0; k < wave.length; k += 2) {
+                        const x = (k / (wave.length - 1)) * w;
+                        const y = mid + ((wave[k] - 128) / 128) * (mid * 0.8);
+                        k === 0 ? sctx.moveTo(x, y) : sctx.lineTo(x, y);
+                    }
+                    sctx.strokeStyle = "rgba(214, 190, 255, 0.55)";
+                    sctx.lineWidth = Math.max(1, dpr * 0.8);
+                    sctx.stroke();
+                }
+            };
+            drawScope("idle", 0);
+            if (typeof ResizeObserver !== "undefined") {
+                new ResizeObserver(() =>
+                    drawScope(!audio.paused && analyser ? "live" : "idle", 0),
+                ).observe(scope);
+            }
+
+            const analyse = (now) => {
+                if (analyser && !audio.paused) {
+                    analyser.getByteFrequencyData(freq);
+                    analyser.getByteTimeDomainData(wave);
+                    const bass = Math.min(1, band(1, 5) * 1.25);
+                    const mid = Math.min(1, band(5, 32) * 1.8);
+                    const high = Math.min(1, band(32, 140) * 3.2);
+                    levels.bass = follow(levels.bass, bass);
+                    levels.mid = follow(levels.mid, mid);
+                    levels.high = follow(levels.high, high);
+                    levels.level = follow(
+                        levels.level,
+                        bass * 0.5 + mid * 0.35 + high * 0.15,
+                    );
+                    if (
+                        bass > 0.22 &&
+                        bass > avgBass * 1.18 &&
+                        now - lastBeat > 220
+                    ) {
+                        lastBeat = now;
+                        levels.beats++;
+                    }
+                    avgBass += (bass - avgBass) * 0.06;
+                    drawScope("live", now);
+                } else {
+                    // Paused (or analyser unavailable): let the levels fall to 0.
+                    levels.bass *= 0.9;
+                    levels.mid *= 0.9;
+                    levels.high *= 0.9;
+                    levels.level *= 0.9;
+                    drawScope(!audio.paused ? "fake" : "idle", now);
+                }
+                if (levels.level > 0.003 || !audio.paused) {
+                    loop = requestAnimationFrame(analyse);
+                } else {
+                    loop = 0;
+                    levels.bass = levels.mid = levels.high = levels.level = 0;
+                    drawScope("idle", 0);
+                }
+            };
+            const startLoop = () => {
+                if (!loop) loop = requestAnimationFrame(analyse);
+            };
+
+            const sync = () => {
+                const playing = !audio.paused;
+                iconPlay.style.display = playing ? "none" : "";
+                iconPause.style.display = playing ? "" : "none";
+                if (playing) {
+                    setupAnalyser();
+                    startLoop();
+                }
+            };
+
+            btnPlay.addEventListener("click", () =>
+                audio.paused ? audio.play() : audio.pause(),
+            );
+            root.querySelector("[data-prev]").addEventListener("click", () =>
+                load(i - 1, true),
+            );
+            root.querySelector("[data-next]").addEventListener("click", () =>
+                load(i + 1, true),
+            );
+            audio.addEventListener("ended", () => load(i + 1, true));
+            audio.addEventListener("play", sync);
+            audio.addEventListener("pause", sync);
+            audio.addEventListener("timeupdate", () => {
+                elTime.textContent = fmt(audio.currentTime);
+                if (audio.duration)
+                    fill.style.width = `${(audio.currentTime / audio.duration) * 100}%`;
+            });
+        </script>
+    </section>
+)}
