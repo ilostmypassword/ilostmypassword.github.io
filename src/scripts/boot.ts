@@ -16,7 +16,7 @@ const overlay = document.querySelector<HTMLElement>('[data-boot]');
 const LINES: { text: string; ok?: boolean; delay: number }[] = [
   { text: 'h3ik0 secure boot 1.0 · linux x86_64', delay: 140 },
   { text: 'loading kernel modules', ok: true, delay: 150 },
-  { text: 'mounting /articles', ok: true, delay: 130 },
+  { text: 'mounting /posts', ok: true, delay: 130 },
   { text: 'mounting /about', ok: true, delay: 110 },
   { text: 'unlocking vault · AES-256-GCM', ok: true, delay: 190 },
   { text: 'tuning audio engine', ok: true, delay: 130 },

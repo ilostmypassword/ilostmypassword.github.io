@@ -4,7 +4,7 @@ import { url } from "../utils/posts";
 const path = Astro.url.pathname;
 const nav = [
     { href: url("/"), label: "Home", exact: true },
-    { href: url("/posts/"), label: "Articles" },
+    { href: url("/posts/"), label: "Posts" },
     { href: url("/about/"), label: "About" },
 ];
 const isCurrent = (l: { href: string; exact?: boolean }) =>

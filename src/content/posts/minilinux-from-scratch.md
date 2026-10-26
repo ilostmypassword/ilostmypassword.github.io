@@ -8,7 +8,7 @@ tags: [linux, kernel, alpine, qemu, tutorial]
 
 There is no better way to understand what a Linux system actually *is* than to assemble one yourself. [MiniLinux-From-Scratch](https://github.com/ilostmypassword/MiniLinux-From-Scratch) is a short tutorial that builds a **small, self-contained distribution derived from Alpine Linux**: a kernel you compile, a root filesystem borrowed from a Docker image, a bootloader, and a single disk image you can boot in QEMU.
 
-The method is intentionally generic. Nothing in it is specific to Alpine, so the same steps can be adapted to another base distribution. This article follows the repository's README and adds the reasoning behind each step.
+The method is intentionally generic. Nothing in it is specific to Alpine, so the same steps can be adapted to another base distribution. This post follows the repository's README and adds the reasoning behind each step.
 
 <div class="note">
 

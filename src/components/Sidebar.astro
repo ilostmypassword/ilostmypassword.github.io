@@ -91,7 +91,7 @@ const links = SOCIALS.map((s) => ({
             <figcaption>{SITE.quote.author}</figcaption>
         </figure>
 
-        <section class="side-section" aria-labelledby="side-links">
+        <section class="side-section side-links" aria-labelledby="side-links">
             <h2 class="side-title" id="side-links">
                 <span class="side-idx">01</span> Elsewhere
             </h2>
@@ -100,6 +100,7 @@ const links = SOCIALS.map((s) => ({
                     <li>
                         <a
                             href={l.href}
+                            aria-label={l.label}
                             rel={
                                 l.href.startsWith("http")
                                     ? "me noopener"
@@ -152,7 +153,10 @@ const links = SOCIALS.map((s) => ({
         <MusicPlayer />
 
         {(latestPost || lastPush) && (
-            <section class="side-section" aria-labelledby="side-activity">
+            <section
+                class="side-section side-activity"
+                aria-labelledby="side-activity"
+            >
                 <h2 class="side-title" id="side-activity">
                     <span class="side-idx">03</span> Activity
                 </h2>
@@ -160,7 +164,7 @@ const links = SOCIALS.map((s) => ({
                     {latestPost && (
                         <li>
                             <span class="act-head">
-                                <span class="act-k">Latest article</span>
+                                <span class="act-k">Latest post</span>
                                 <time
                                     class="act-ago"
                                     datetime={latestPost.data.date.toISOString()}

@@ -28,7 +28,7 @@ interface Props {
 const { post, newer, older } = Astro.props;
 const { title, description, date, updated, kind, event, locked } = post.data;
 
-// Encrypted articles (npm run lock): only ciphertext is available at build time.
+// Encrypted posts (npm run lock): only ciphertext is available at build time.
 const payloads = import.meta.glob<unknown>("../../content/locked/*.json", {
     eager: true,
     import: "default",
@@ -64,7 +64,7 @@ const mailto = `mailto:${SITE.email}?subject=${encodeURIComponent(`Access reques
             <h1 data-locked-title={locked ? "" : undefined}>{title}</h1>
             {locked ? (
                 <p class="post-lede log-glyph" data-locked-lede data-glyph>
-                    <span class="sr-only">Encrypted article</span>
+                    <span class="sr-only">Encrypted post</span>
                     <span aria-hidden="true" data-glyph-text>
                         {glyphs(description)}
                     </span>
@@ -168,7 +168,7 @@ const mailto = `mailto:${SITE.email}?subject=${encodeURIComponent(`Access reques
                                 />
                             </svg>
                         </span>
-                        <h2>Encrypted article</h2>
+                        <h2>Encrypted post</h2>
                         <p class="gate-sub">
                             Enter your personal access key to read it.
                         </p>
@@ -211,7 +211,7 @@ const mailto = `mailto:${SITE.email}?subject=${encodeURIComponent(`Access reques
 
                     <div class="prose" data-locked-body hidden />
                     <button type="button" class="relock" data-relock hidden>
-                        Lock this article again
+                        Lock this post again
                     </button>
                     <script
                         type="application/json"

@@ -376,18 +376,47 @@ img, svg, video { max-width: 100%; height: auto; }
 .sidebar-foot { margin: auto 0 0; padding-top: 1rem; font-family: var(--font-mono); font-size: 0.6875rem; line-height: 1.6; letter-spacing: 0.04em; color: var(--muted); }
 
 @media (max-width: 70rem) {
+  /* Compact top bar: avatar + name, social links and a mini player on one
+     wrapping row. The quote, status line, activity and footer are dropped. */
   .shell { grid-template-columns: minmax(0, 1fr); }
   .sidebar { border-right: 0; border-bottom: 1px solid var(--rule); }
-  .sidebar-inner { position: static; height: auto; overflow: visible; gap: 1.25rem; padding: 1.5rem var(--pad); background: none; }
+  .sidebar-inner {
+    position: static; height: auto; overflow: visible; background: none;
+    flex-direction: row; flex-wrap: wrap; align-items: center;
+    gap: 0.6rem 1.5rem; padding: 0.75rem var(--pad);
+  }
   .sidebar-inner::after { display: none; }
-  .profile { flex-direction: row; align-items: center; }
-  .avatar-frame { width: 4rem; height: 4rem; }
-  .socials { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; border-top: 0; }
-  .socials a { padding: 0; border-bottom: 0; }
+  .status, .sidebar-quote, .side-activity, .sidebar-foot, .side-title,
+  .player-scope, .player-progress, .player-artist, .player-time { display: none; }
+
+  .profile { flex-direction: row; align-items: center; gap: 0.75rem; margin-right: auto; }
+  .avatar-glow { filter: none; }
+  .avatar-frame { width: 2.75rem; height: 2.75rem; padding: 2px; }
+  .profile-text { gap: 0.25rem; }
+  .profile-name { font-size: 1.1rem; }
+  .profile-role { font-size: 0.625rem; }
+
+  .socials { display: flex; flex-wrap: wrap; gap: 0.25rem 1.1rem; border-top: 0; }
+  .socials a { padding: 0; border-bottom: 0; gap: 0.4rem; font-size: 0.8125rem; }
   .socials a:hover { padding-left: 0; background: none; }
+  .socials svg { width: 14px; height: 14px; }
   .socials .arrow { display: none; }
   .socials .stars { margin-left: 0; }
-  .sidebar-foot { margin: 0; }
+
+  .player-box { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.5rem 0.3rem 0.4rem; }
+  .player-row { gap: 0.4rem; }
+  .player-info { flex: 0 1 auto; max-width: 8rem; }
+  .player-track { font-size: 0.8125rem; }
+}
+
+@media (max-width: 40rem) {
+  .profile-role { display: none; }
+  /* Social links become icons only (the links keep an aria-label). */
+  .socials a > span:not(.stars):not(.arrow) { display: none; }
+  .socials { gap: 0.25rem 1rem; }
+  .player { order: 3; flex: 1 1 100%; }
+  .player-info { flex: 1 1 0; max-width: none; }
+  .player-box { justify-content: space-between; }
 }
 
 /* ---------- Home hero ---------- */
@@ -574,7 +603,7 @@ img, svg, video { max-width: 100%; height: auto; }
 .page-head h1 { margin: 0; font-size: clamp(2.25rem, 6vw, 3.5rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1; }
 .page-head p { margin: 1rem 0 0; color: var(--muted); font-family: var(--font-serif); font-size: 1.125rem; }
 
-/* ---------- Styled page headers (Articles, About) ---------- */
+/* ---------- Styled page headers (Posts, About) ---------- */
 .page-head.fancy { position: relative; isolation: isolate; padding-block: 4rem 3.25rem; }
 /* Drifting dot lattice fading out to the right. */
 .page-head.fancy::before {
@@ -922,7 +951,7 @@ img, svg, video { max-width: 100%; height: auto; }
   border-top: 1px solid var(--rule);
 }
 
-/* ---------- Encrypted article ---------- */
+/* ---------- Encrypted post ---------- */
 .gate {
   max-width: var(--measure);
   display: grid; grid-template-columns: auto 1fr; column-gap: 1.4rem; row-gap: 0;

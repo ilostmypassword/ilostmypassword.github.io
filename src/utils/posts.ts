@@ -27,7 +27,7 @@ export function url(path: string): string {
 
 const GLYPH_SET = [...'ᗩᘺᓰᑢᑘᖇᕵᘜᘉᕼᕴᓍᕲᐺᖽᐸᗱᖴ0123456789'];
 
-/** Replace every non-space character with a random glyph (teasers of encrypted articles). */
+/** Replace every non-space character with a random glyph (teasers of encrypted posts). */
 export function glyphs(text: string): string {
   return [...text]
     .map((c) => (/\s/.test(c) ? c : GLYPH_SET[Math.floor(Math.random() * GLYPH_SET.length)]))

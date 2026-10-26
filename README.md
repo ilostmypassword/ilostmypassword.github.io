@@ -36,11 +36,11 @@ Use `.mdx` instead of `.md` when you need components:
 
 Images can go in `public/` and be referenced as `/my-image.png`.
 
-## Encrypted articles
+## Encrypted posts
 
 The site is static, so access control is done with encryption: only ciphertext is published, and it is decrypted in the reader's browser with a key that you send by email.
 
-1. Write the article in `private/<slug>.md` (same frontmatter as a normal post). `private/` is git-ignored: clear text and keys never leave your machine.
+1. Write the post in `private/<slug>.md` (same frontmatter as a normal post). `private/` is git-ignored: clear text and keys never leave your machine.
 2. Encrypt it and create one access link per reader:
    ```bash
    npm run lock -- <slug> --add alice --add bob
@@ -49,10 +49,10 @@ The site is static, so access control is done with encryption: only ciphertext i
 3. Commit `src/content/locked/<slug>.json` and `src/content/posts/<slug>.md`, then push.
 4. Send each reader their link (`/posts/<slug>/#k=...`) in a PGP-encrypted email.
 
-Update the article: edit `private/<slug>.md` and run `npm run lock -- <slug>` again (same links keep working).
+Update the post: edit `private/<slug>.md` and run `npm run lock -- <slug>` again (same links keep working).
 Remove a reader: `npm run lock -- <slug> --revoke bob`, then deploy. The content key is regenerated at every run, so they cannot open the new version. List the links again with `--list`.
 
-Limits to know: whoever has a key can read (and copy) the article; keys cannot expire; what was already published stays decryptable by its previous readers (including from git history). The title, date and type of the article are public; the description, tags and body are encrypted. Images are not encrypted.
+Limits to know: whoever has a key can read (and copy) the post; keys cannot expire; what was already published stays decryptable by its previous readers (including from git history). The title, date and type of the post are public; the description, tags and body are encrypted. Images are not encrypted.
 
 ## Deploy
 

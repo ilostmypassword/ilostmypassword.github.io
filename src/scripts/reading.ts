@@ -1,9 +1,9 @@
 /**
- * Reading mode (articles only) + table-of-contents tracking.
+ * Reading mode (posts only) + table-of-contents tracking.
  *
  * - Press F (or click the button) to hide the sidebar, navbar and footer and
- *   read the article in a single centred column. Esc / F exits.
- *   The mode follows you from one article to the next and switches off on
+ *   read the post in a single centred column. Esc / F exits.
+ *   The mode follows you from one post to the next and switches off on
  *   any other page.
  * - The "On this page" list highlights the section being read.
  */

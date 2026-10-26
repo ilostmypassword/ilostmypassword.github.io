@@ -1,7 +1,7 @@
 /**
  * "Decode" effect, site-wide: text starts as noise and resolves left to right.
  *
- * - On page load, the home tagline and the Articles / About titles decode
+ * - On page load, the home tagline and the Posts / About titles decode
  *   (see MAIN). Nothing else animates on load.
  * - Hovering a navbar link re-decodes it (see HOVER).
  *   The sidebar never animates.

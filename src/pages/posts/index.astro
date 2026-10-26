@@ -14,25 +14,25 @@ const pad = (n: number) => String(n).padStart(2, "0");
 ---
 
 <Base
-    title="Articles"
-    description="Every article: CTF writeups, research, bug bounty and notes."
+    title="Posts"
+    description="Every post: CTF writeups, research, bug bounty and notes."
 >
     <header class="page-head fancy wrap">
         <p class="eyebrow">archive</p>
         <h1 class="big-title" data-decode>
-            Articles
+            Posts
             <span class="big-count" aria-hidden="true">
                 {pad(count)}
             </span>
         </h1>
         <br />
-        <p class="lede term" aria-label="ls -lah /articles">
+        <p class="lede term" aria-label="ls -lah /posts">
             <span class="term-user">h3ik0@blog</span>
             <span class="term-sep">:</span>
             <span class="term-path">~</span>
             <span class="term-sep term-dollar">$</span>
-            <span class="term-cmd" style="--n: 17">
-                ls -lah /articles
+            <span class="term-cmd" style="--n: 14">
+                ls -lah /posts
             </span>
             <span class="term-cursor" aria-hidden="true"></span>
         </p>
@@ -49,6 +49,6 @@ const pad = (n: number) => String(n).padStart(2, "0");
                 <PostList posts={list} />
             </section>
         ))}
-        {count === 0 && <p class="empty">No articles yet.</p>}
+        {count === 0 && <p class="empty">No posts yet.</p>}
     </div>
 </Base>

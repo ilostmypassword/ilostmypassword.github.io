@@ -17,11 +17,11 @@ const items: Item[] = [
     ...posts.map((p) => ({
         label: p.data.title,
         hint: p.data.locked ? "Encrypted" : KINDS[p.data.kind],
-        group: "Articles",
+        group: "Posts",
         href: url(`/posts/${p.id}/`),
     })),
     { label: "Home", hint: "Page", group: "Go to", href: url("/") },
-    { label: "Articles", hint: "Page", group: "Go to", href: url("/posts/") },
+    { label: "Posts", hint: "Page", group: "Go to", href: url("/posts/") },
     { label: "About", hint: "Page", group: "Go to", href: url("/about/") },
     {
         label: "RSS feed",
@@ -66,7 +66,7 @@ const items: Item[] = [
             <input
                 class="palette-input"
                 type="text"
-                placeholder="Search articles, pages, actions…"
+                placeholder="Search posts, pages, actions…"
                 autocomplete="off"
                 spellcheck="false"
                 role="combobox"

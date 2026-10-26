@@ -1,5 +1,5 @@
 /**
- * Encrypted article teasers (listings and the locked article page).
+ * Encrypted post teasers (listings and the locked post page).
  *
  * The line is made of frozen glyphs and is NEVER readable. While the pointer
  * is over it (or the row is focused) the glyphs churn; when it leaves, they

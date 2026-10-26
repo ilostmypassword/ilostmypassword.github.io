@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Encrypt a private article so it can be published on a static site.
+ * Encrypt a private post so it can be published on a static site.
  *
  *   node scripts/lock.mjs <slug> --add alice --add bob
  *   node scripts/lock.mjs <slug> --revoke bob
  *   node scripts/lock.mjs <slug> --list
  *
  * Input (never committed, see .gitignore):
- *   private/<slug>.md            the article, with the usual frontmatter
+ *   private/<slug>.md            the post, with the usual frontmatter
  *   private/<slug>.keys.json     recipient name -> access key (created here)
  *
  * Output (safe to commit):
@@ -15,7 +15,7 @@
  *   src/content/posts/<slug>.md      a public stub: title, date, kind. Nothing else.
  *
  * Cryptography (AES-256-GCM everywhere: node:crypto here, WebCrypto in the browser):
- *   - a random 256-bit content key CK encrypts the rendered article (HTML),
+ *   - a random 256-bit content key CK encrypts the rendered post (HTML),
  *     padded to a multiple of 4 KiB so its length reveals little;
  *   - every recipient gets a random 256-bit access key AK. The payload holds CK
  *     wrapped once per recipient, plus decoy wraps so the number of readers is
@@ -33,7 +33,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PUBLIC_DESCRIPTION = 'Encrypted article. Access on request.';
+const PUBLIC_DESCRIPTION = 'Encrypted post. Access on request.';
 const DEFAULT_SITE = 'https://ilostmypassword.github.io';
 const BLOCK = 4096;
 const DECOY_MULTIPLE = 4;
@@ -100,7 +100,7 @@ if (listOnly) {
 if (!existsSync(privateMd)) fail(`missing ${path.relative(ROOT, privateMd)}`);
 if (!Object.keys(keys).length) fail('no recipient yet. Add one with: --add <name>');
 
-// ---------- read the article ----------
+// ---------- read the post ----------
 const source = await readFile(privateMd, 'utf8');
 const { data, content } = parseFrontmatter(source);
 
@@ -116,8 +116,8 @@ const publicTitle = typeof data.lockedTitle === 'string' && data.lockedTitle ? d
 
 if (/!\[[^\]]*\]\((?!data:)/.test(content) || /<img\s/i.test(content)) {
   console.warn(
-    'Warning: this article references images. Files served from the site (public/, src/assets/) are NOT encrypted,\n' +
-      '         and remote images leak who reads the article. Inline them as data: URIs if they are sensitive.\n',
+    'Warning: this post references images. Files served from the site (public/, src/assets/) are NOT encrypted,\n' +
+      '         and remote images leak who reads the post. Inline them as data: URIs if they are sensitive.\n',
   );
 }
 
@@ -230,7 +230,7 @@ function unquote(s) {
 /** Minimal frontmatter reader: flat `key: value` lines and `[a, b]` lists. */
 function parseFrontmatter(src) {
   const m = src.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!m) fail('the article must start with a --- frontmatter block');
+  if (!m) fail('the post must start with a --- frontmatter block');
   const out = {};
   for (const line of m[1].split(/\r?\n/)) {
     const kv = line.match(/^([A-Za-z_][\w-]*):\s*(.*)$/);

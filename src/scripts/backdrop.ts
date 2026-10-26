@@ -7,9 +7,9 @@
  * sends a faint ring out from the centre of the screen.
  *
  * It also publishes the bass level as `--bass` on `.page-head.fancy`, so the
- * dot lattice of the Articles / About headers can pulse with the music.
+ * dot lattice of the Posts / About headers can pulse with the music.
  *
- * Rendered at half resolution, capped at ~30 fps, paused when the tab is
+ * Rendered at reduced resolution, capped at ~20 fps, paused when the tab is
  * hidden. With prefers-reduced-motion a single still frame is drawn.
  */
 export {};
@@ -53,7 +53,7 @@ float noise(vec2 p) {
 }
 float fbm(vec2 p) {
   float v = 0.0, a = 0.5;
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 3; i++) {
     v += a * noise(p);
     p = p * 2.03 + vec2(1.7, 9.2);
     a *= 0.5;
@@ -64,7 +64,7 @@ float fbm(vec2 p) {
 void main() {
   vec2 uv = gl_FragCoord.xy / uRes;
   vec2 p = (gl_FragCoord.xy - 0.5 * uRes) / min(uRes.x, uRes.y);
-  float t = uT * 0.04;
+  float t = uT * 0.025;
 
   // Domain warp: the whole field slowly breathes and swells with the bass.
   vec2 q = vec2(fbm(p * 1.3 + t), fbm(p * 1.3 - t + 4.0));
@@ -73,27 +73,27 @@ void main() {
   // Two drifting interference sources + noise relief.
   float r1 = length(w - vec2(0.55 * sin(t * 3.0), 0.35 * cos(t * 2.0)));
   float r2 = length(w + vec2(0.5 * cos(t * 2.5), 0.4 * sin(t * 1.7)));
-  float f = sin(r1 * 9.0 - uT * 0.25) + sin(r2 * 7.0 + uT * 0.18);
+  float f = sin(r1 * 9.0 - uT * 0.15) + sin(r2 * 7.0 + uT * 0.11);
   f = f * 0.25 + fbm(w * 2.2) * 1.2;
 
   // Contour lines.
   float d = abs(fract(f * 3.0) - 0.5) * 2.0;
-  float line = 1.0 - smoothstep(0.0, 0.10 + uLvl * 0.06, d);
+  float line = 1.0 - smoothstep(0.0, 0.065 + uLvl * 0.03, d);
 
   // Beat ring travelling from the centre, lighting the lines it crosses.
   float rr = length(p);
   float ring = exp(-pow((rr - uRing) * 7.0, 2.0)) * uRingA;
-  line *= 1.0 + ring * 2.5;
+  line *= 1.0 + ring * 1.5;
 
   // Stronger on the edges, calmer behind the text column.
   float vig = smoothstep(0.12, 0.75, length((uv - 0.5) * vec2(1.0, 1.2)));
-  float mask = mix(0.5, 1.0, vig);
+  float mask = mix(0.25, 0.8, vig);
 
   vec3 purple = vec3(0.42, 0.18, 0.72);
-  float amp = 0.22 + uBass * 0.20 + uLvl * 0.10;
+  float amp = 0.055 + uBass * 0.05 + uLvl * 0.025;
   vec3 col = purple * line * amp * mask;
-  col += vec3(0.16, 0.05, 0.30) * smoothstep(0.55, 1.0, f) * 0.22 * mask;
-  col += vec3(0.30, 0.10, 0.55) * ring * 0.10;
+  col += vec3(0.16, 0.05, 0.30) * smoothstep(0.55, 1.0, f) * 0.045 * mask;
+  col += vec3(0.30, 0.10, 0.55) * ring * 0.03;
 
   vec3 base = vec3(0.051, 0.067, 0.090);
   vec3 rgb = base + col;
@@ -102,8 +102,8 @@ void main() {
 }
 `;
 
-const SCALE = 0.5;
-const FRAME_MS = 33;
+const SCALE = 0.4;
+const FRAME_MS = 50;
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const readAudio = (): Levels | undefined => (window as unknown as { __audio?: Levels }).__audio;
 
@@ -186,7 +186,7 @@ function start() {
     }
     const age = sec - beatAt;
     // The field drifts a bit faster when there is sound.
-    clock += dt * (1 + level * 1.5);
+    clock += dt * (1 + level * 0.8);
 
     resize();
     gl.uniform2f(u.res, canvas.width, canvas.height);

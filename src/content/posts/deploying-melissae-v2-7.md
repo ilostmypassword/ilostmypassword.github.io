@@ -8,7 +8,7 @@ tags: [honeypot, detection, blue team, melissae]
 
 Most honeypots give you a wall of logs. [Melissae](https://github.com/ilostmypassword/Melissae-Honeypot-Framework) is my attempt at something more useful: **a fleet of decoys, a verdict on every attacker, and an (optional) AI analyst that explains what just happened.**
 
-This article is the guide I wish I had written earlier. It walks through a complete v2.7 deployment (one manager, one agent), and explains what is going on under the hood so you know what you are running. Everything here comes from the project's [README](https://github.com/ilostmypassword/Melissae-Honeypot-Framework) and the [official documentation](https://melissae-documentation.readthedocs.io/en/latest/overview.html), which remain the source of truth.
+This post is the guide I wish I had written earlier. It walks through a complete v2.7 deployment (one manager, one agent), and explains what is going on under the hood so you know what you are running. Everything here comes from the project's [README](https://github.com/ilostmypassword/Melissae-Honeypot-Framework) and the [official documentation](https://melissae-documentation.readthedocs.io/en/latest/overview.html), which remain the source of truth.
 
 <div class="note">
 

@@ -1,5 +1,5 @@
 /**
- * Encrypted articles: decrypts the payload in the browser.
+ * Encrypted posts: decrypts the payload in the browser.
  *
  * The page ships only ciphertext (see scripts/lock.mjs for the format). The
  * access key comes from the URL fragment (#k=...), which browsers never send
@@ -164,7 +164,7 @@ async function init() {
     button.textContent = label;
     if (!doc) {
       sessionStorage.removeItem(store);
-      if (!quiet) fail('This key does not unlock this article.');
+      if (!quiet) fail('This key does not unlock this post.');
       return false;
     }
     sessionStorage.setItem(store, candidate);

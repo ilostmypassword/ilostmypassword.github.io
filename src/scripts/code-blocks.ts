@@ -1,5 +1,5 @@
 /**
- * Code blocks in articles: a small header bar (language + copy button).
+ * Code blocks in posts: a small header bar (language + copy button).
  * Line numbers are pure CSS (see .codeblock in global.css).
  */
 export {};

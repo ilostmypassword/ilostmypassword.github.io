@@ -54,20 +54,20 @@ const latest = all.slice(0, 6);
 
     <section class="wrap" aria-labelledby="latest">
         <h2 class="section-title centered" id="latest">
-            Latest articles
+            Latest posts
         </h2>
         {latest.length > 0 ? (
             <PostList posts={latest} />
         ) : (
             <p class="empty">
                 Nothing published yet. Add a Markdown file to src/content/posts
-                to publish your first article.
+                to publish your first post.
             </p>
         )}
         {all.length > latest.length && (
             <div class="split">
                 <p class="more main">
-                    <a href={url("/posts/")}>See all {all.length} articles</a>
+                    <a href={url("/posts/")}>See all {all.length} posts</a>
                 </p>
             </div>
         )}
